@@ -1,14 +1,29 @@
+export interface Lecture {
+  id: string;
+  title: string;
+  fileName: string;
+}
+
+export interface SubSection {
+  id: string;
+  title: string;
+  time: string; 
+  questionsCount: string; 
+  status: 'active' | 'locked';
+  lectures: Lecture[];
+}
+
+export interface Section {
+  id: string;
+  title: string;
+  subSections: SubSection[];
+}
+
 export interface Subject {
   id: string;
   title: string;
-  icon: string;
-  count: number;
-}
-
-export interface StudentProgress {
-  id: string;
-  name: string;
-  progress: number; // 0-100%
-  status: 'online' | 'offline' | 'quit';
-  needsApproval: boolean;
+  iconName: string; 
+  color: string;
+  sections: Section[];
+  isHidden?: boolean; 
 }
