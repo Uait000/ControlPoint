@@ -49,7 +49,6 @@ export default function App() {
             <AuthPage key="auth" onAuthSuccess={handleAuthSuccess} />
           ) : (
             <div className="w-full flex flex-col items-center min-h-screen relative">
-              {/* --- НАВИГАЦИЯ --- */}
               <nav className="w-full bg-white/90 backdrop-blur-xl border-b-2 border-[#e1eefb] sticky top-0 z-[500]">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-24 flex justify-between items-center">
                   <Link to="/" className="flex items-center gap-3 group" onClick={() => setIsMenuOpen(false)}>
@@ -62,7 +61,6 @@ export default function App() {
                     </div>
                   </Link>
 
-                  {/* ДЕКСТОПНОЕ МЕНЮ */}
                   <div className="hidden md:flex items-center gap-3">
                     <NavLink to="/" icon={<LayoutGrid size={20}/>} label="ПРЕДМЕТЫ" />
                     {user.role === 'admin' && <NavLink to="/admin" icon={<Settings size={20}/>} label="АДМИН-ЦЕНТР" />}
@@ -72,25 +70,20 @@ export default function App() {
                     </button>
                   </div>
 
-                  {/* КНОПКА БУРГЕРА */}
                   <button className="md:hidden p-3 bg-slate-50 rounded-2xl text-[#1976d2] shadow-sm active:scale-90 transition-all" onClick={() => setIsMenuOpen(!isMenuOpen)}>
                     {isMenuOpen ? <X size={26} /> : <Menu size={26} />}
                   </button>
                 </div>
 
-                {/* МОБИЛЬНОЕ МЕНЮ (ИСПРАВЛЕНО) */}
                 <AnimatePresence>
                   {isMenuOpen && (
                     <motion.div 
-                      initial={{ opacity: 0, y: -20 }} 
-                      animate={{ opacity: 1, y: 0 }} 
-                      exit={{ opacity: 0, y: -20 }} 
+                      initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} 
                       className="absolute top-full left-0 w-full bg-white border-b-4 border-slate-50 shadow-2xl z-[1000] p-6 flex flex-col space-y-3"
                     >
                       <MobileLink to="/" label="КАТАЛОГ ПРЕДМЕТОВ" icon={<LayoutGrid size={24}/>} onClick={() => setIsMenuOpen(false)} />
                       {user.role === 'admin' && <MobileLink to="/admin" label="АДМИН-ЦЕНТР" icon={<Settings size={24}/>} onClick={() => setIsMenuOpen(false)} />}
                       {user.role !== 'admin' && <MobileLink to={user.role === 'student' ? "/student" : "/teacher"} label="МОЙ ПРОФИЛЬ" icon={<User size={24}/>} onClick={() => setIsMenuOpen(false)} />}
-                      
                       <button onClick={handleLogout} className="w-full p-5 bg-red-50 text-red-500 font-black flex items-center justify-between rounded-3xl mt-4 italic uppercase text-xs">
                         ЗАВЕРШИТЬ СЕАНС <LogOut size={24} />
                       </button>
@@ -103,6 +96,7 @@ export default function App() {
                 <Routes>
                   <Route path="/" element={<MainPage />} />
                   <Route path="/subject/:id" element={<SubjectSectionsPage />} />
+                  <Route path="/test/:id" element={<TestPage />} /> 
                   <Route path="/admin" element={user.role === 'admin' ? <AdminPanel /> : <Navigate to="/" />} />
                   <Route path="/teacher" element={user.role === 'teacher' ? <TeacherProfile /> : <Navigate to={user.role === 'admin' ? "/admin" : "/"} />} />
                   <Route path="/student" element={user.role === 'student' ? <StudentProfile /> : <Navigate to={user.role === 'admin' ? "/admin" : "/"} />} />
@@ -117,7 +111,6 @@ export default function App() {
   );
 }
 
-// --- СТРАНИЦА АВТОРИЗАЦИИ (ИСПРАВЛЕННОЕ ПЕРЕКРЫТИЕ) ---
 function AuthPage({ onAuthSuccess }: any) {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({ surname: '', name: '', group: '', email: '', password: '', role: 'student' });
@@ -125,22 +118,23 @@ function AuthPage({ onAuthSuccess }: any) {
 
   return (
     <div className="fixed inset-0 z-[600] bg-[#f0f7ff] flex items-center justify-center p-4 overflow-y-auto">
-      {/* КАРТОЧКА БЕЗ ABSOLUTE ДЛЯ ПАНЕЛЕЙ */}
       <div className="bg-white w-full max-w-5xl rounded-[3rem] md:rounded-[4rem] shadow-2xl flex flex-col md:flex-row overflow-hidden relative border-4 md:border-8 border-white min-h-[600px]">
-        
-        {/* СИНЯЯ ПАНЕЛЬ (ТЕПЕРЬ В ПОТОКЕ FLEX) */}
         <motion.div 
           layout
           className={`bg-[#1976d2] text-white p-10 md:p-16 flex flex-col justify-center items-center text-center space-y-6 md:space-y-8 md:w-1/2 order-first ${isLogin ? 'md:order-last' : 'md:order-first'}`}
         >
           <Shield size={60} className="opacity-80" />
-          <h3 className="text-3xl md:text-4xl font-black italic tracking-tighter uppercase leading-none">МАГИСТРАЛЬ <br/> ТТЖТ</h3>
+          <h3 className="text-3xl md:text-4xl font-black italic tracking-tighter uppercase leading-none italic">МАГИСТРАЛЬ <br/> ТТЖТ</h3>
           <div className="space-y-4">
-            <p className="text-[10px] md:text-xs opacity-70 tracking-widest leading-relaxed font-black">
+            <p className="text-[10px] md:text-xs opacity-70 tracking-widest leading-relaxed font-black uppercase italic">
               {isLogin ? 'НЕТ УЧЁТНОЙ ЗАПИСИ?' : 'УЖЕ ЗАРЕГИСТРИРОВАНЫ?'}
             </p>
             <button 
-              onClick={() => setIsLogin(!isLogin)} 
+              onClick={() => {
+                setIsLogin(!isLogin);
+                // При переходе на регистрацию сбрасываем роль на студента
+                if (isLogin) setFormData(prev => ({ ...prev, role: 'student' }));
+              }} 
               className="border-4 border-white/30 hover:bg-white hover:text-[#1976d2] px-10 py-4 md:px-14 md:py-5 rounded-[2.5rem] text-[10px] md:text-xs transition-all font-black uppercase italic shadow-xl active:scale-95"
             >
               {isLogin ? 'ЗАРЕГИСТРИРОВАТЬСЯ' : 'ВОЙТИ В ПРОФИЛЬ'}
@@ -148,14 +142,11 @@ function AuthPage({ onAuthSuccess }: any) {
           </div>
         </motion.div>
 
-        {/* БЕЛАЯ ПАНЕЛЬ (ФОРМА) */}
         <div className="flex-1 flex flex-col justify-center bg-white p-8 md:p-16">
           <AnimatePresence mode="wait">
             <motion.div 
               key={isLogin ? 'login' : 'register'}
-              initial={{ opacity: 0, x: isLogin ? 20 : -20 }} 
-              animate={{ opacity: 1, x: 0 }} 
-              exit={{ opacity: 0, x: isLogin ? -20 : 20 }}
+              initial={{ opacity: 0, x: isLogin ? 20 : -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: isLogin ? -20 : 20 }}
               className="max-w-sm mx-auto w-full space-y-6 text-left"
             >
               <div className="space-y-1">
@@ -164,32 +155,30 @@ function AuthPage({ onAuthSuccess }: any) {
               </div>
 
               <form className="space-y-4" onSubmit={handleSubmit}>
-                <RoleSelector role={formData.role} setRole={(r:any) => setFormData({...formData, role: r})} />
+                {/* ВЫБОР РОЛИ ТОЛЬКО ПРИ ВХОДЕ */}
+                {isLogin && <RoleSelector role={formData.role} setRole={(r:any) => setFormData({...formData, role: r})} />}
                 
                 {!isLogin && (
-                  <div className="grid grid-cols-2 gap-3 animate-in fade-in duration-300">
+                  <div className="grid grid-cols-2 gap-3">
                     <AuthInput label="ФАМИЛИЯ" value={formData.surname} onChange={(v:any) => setFormData({...formData, surname: v.toUpperCase()})} />
                     <AuthInput label="ИМЯ" value={formData.name} onChange={(v:any) => setFormData({...formData, name: v.toUpperCase()})} />
                   </div>
                 )}
 
-                {!isLogin && formData.role === 'student' && (
+                {!isLogin && (
                   <div className="space-y-1">
                     <label className="text-[9px] text-slate-400 ml-3 font-black italic uppercase">Группа</label>
-                    <div className="relative">
-                      <Users className="absolute left-4 top-1/2 -translate-y-1/2 text-[#1976d2]/40" size={16} />
-                      <select required className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3.5 pl-10 pr-4 text-[11px] font-black outline-none italic uppercase shadow-inner appearance-none transition-all focus:border-[#1976d2]" value={formData.group} onChange={e => setFormData({...formData, group: e.target.value})}>
-                          <option value="">ВЫБЕРИТЕ...</option>
-                          <option value="КС-2-1">КС-2-1</option>
-                          <option value="Р-1-1">Р-1-1</option>
-                      </select>
-                    </div>
+                    <select required className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3.5 px-4 text-[11px] font-black outline-none italic uppercase shadow-inner appearance-none transition-all focus:border-[#1976d2]" value={formData.group} onChange={e => setFormData({...formData, group: e.target.value})}>
+                        <option value="">ВЫБЕРИТЕ...</option>
+                        <option value="КС-2-1">КС-2-1</option>
+                        <option value="Р-1-1">Р-1-1</option>
+                        <option value="Т-2-1">Т-2-1</option>
+                    </select>
                   </div>
                 )}
-
+                
                 <AuthInput label="E-MAIL / ЛОГИН" icon={<Mail size={18}/>} value={formData.email} onChange={(v:any) => setFormData({...formData, email: v})} />
                 <AuthInput label="ПАРОЛЬ" type="password" icon={<Lock size={18}/>} value={formData.password} onChange={(v:any) => setFormData({...formData, password: v})} />
-                
                 <button className="w-full bg-[#1976d2] text-white py-4 md:py-5 rounded-2xl font-black text-lg shadow-xl uppercase italic mt-6 active:scale-95 transition-all flex items-center justify-center gap-2">
                   {isLogin ? 'Войти' : 'Создать'} <ChevronRight size={20}/>
                 </button>
@@ -201,8 +190,6 @@ function AuthPage({ onAuthSuccess }: any) {
     </div>
   );
 }
-
-// --- ВСПОМОГАТЕЛЬНЫЕ КОМПОНЕНТЫ ---
 
 function RoleSelector({ role, setRole }: any) {
   return (
