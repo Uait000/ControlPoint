@@ -1,146 +1,327 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Timer, ChevronRight, CheckCircle2, Lock, Trophy, RotateCcw, AlertTriangle, Info } from 'lucide-react';
-import type { Question } from '../types';
-
-// Вопросы по лекции "Подходы к измерению информации" [cite: 1, 2]
-const MOCK_QUESTIONS: Question[] = [
-  { id: 1, type: 'choice', text: "Кто разработал содержательный подход к измерению информации?", options: ["А.Н. Колмогоров", "К. Шеннон", "Р. Хартли", "Билл Гейтс"], correctAnswer: 1 }, 
-  { id: 2, type: 'choice', text: "Что такое 1 бит в содержательном подходе?", options: ["8 байтов", "Уменьшение неопределенности в 2 раза", "Мощность алфавита", "1024 Кбайта"], correctAnswer: 1 }, 
-  { id: 3, type: 'choice', text: "Как называется формула $2^i = N$?", options: ["Формула Шеннона", "Формула Хартли", "Метод Колмогорова", "Таблица ASCII"], correctAnswer: 1 }, 
-  { id: 4, type: 'choice', text: "Какой подход считается объективным и не зависит от субъекта?", options: ["Содержательный", "Алфавитный", "Вероятностный", "Параллельный"], correctAnswer: 1 }, 
-  { id: 5, type: 'choice', text: "Сколько символов содержит алфавит UNICODE?", options: ["256", "2", "65 536", "1024"], correctAnswer: 2 }, 
-  { id: 6, type: 'choice', text: "Чему равен 1 байт?", options: ["1024 бита", "2 бита", "8 бит", "16 бит"], correctAnswer: 2 }, 
-  { id: 7, type: 'choice', text: "Что является кодирующим устройством в примере с микрофоном?", options: ["Микрофон", "Звуковая плата", "Жесткий диск", "Провода"], correctAnswer: 0 }, 
-  { id: 8, type: 'choice', text: "Какова примерная информационная емкость CD-диска?", options: ["4,7 ГБ", "1,44 МБ", "700 МБ", "2 ТБ"], correctAnswer: 2 }, 
-  { id: 9, type: 'choice', text: "Какие файлы почти не сжимаются архиваторами?", options: ["Текстовые", "Графические", "Аудио- и видеофайлы", "Базы данных"], correctAnswer: 2 }, 
-  { id: 10, type: 'classification', text: "Распределите единицы измерения:", categories: ["Мелкие", "Крупные"], items: [{id:'1', text:'Бит'}, {id:'2', text:'Терабайт'}, {id:'3', text:'Байт'}], correctAnswer: {'1':0, '2':1, '3':0} } 
-];
+import { 
+  Timer, ChevronRight, CheckCircle2, Lock, Trophy, 
+  AlertTriangle, Home, BarChart3, Loader2 
+} from 'lucide-react';
 
 export const TestPage = () => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  
+  const [questions, setQuestions] = useState<any[]>([]);
   const [testStarted, setTestStarted] = useState(false);
   const [testFinished, setTestFinished] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
-  const [selectedIdx, setSelectedIdx] = useState<any>(null);
-  const [timeLeft, setTimeLeft] = useState(3000); 
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [timeLeft, setTimeLeft] = useState(1200); // 20 минут
   const [score, setScore] = useState(0);
+  const [isBlocked, setIsBlocked] = useState(false);
 
-  const currentQuestion = MOCK_QUESTIONS[currentStep];
-  const totalSteps = MOCK_QUESTIONS.length;
-  const percentage = Math.round((score / totalSteps) * 100);
+  const socketRef = useRef<WebSocket | null>(null);
 
-  // Настройки оценки и цветов шкалы
-  const evalData = useMemo(() => {
-    if (percentage < 40) return { label: 'НУЖНО ПОВТОРИТЬ', grade: 2, textColor: 'text-rose-700', bgColor: 'bg-rose-50' };
-    if (percentage < 65) return { label: 'УДОВЛЕТВОРИТЕЛЬНО', grade: 3, textColor: 'text-amber-800', bgColor: 'bg-amber-50' };
-    if (percentage < 85) return { label: 'ХОРОШИЙ РЕЗУЛЬТАТ', grade: 4, textColor: 'text-sky-800', bgColor: 'bg-sky-50' };
-    return { label: 'ОТЛИЧНАЯ РАБОТА', grade: 5, textColor: 'text-emerald-800', bgColor: 'bg-emerald-50' };
-  }, [percentage]);
+  // --- ЛОГИКА ЗАПУСКА ТЕСТА (ГЕНЕРАЦИЯ С РАСШИФРОВКОЙ) ---
+  const startTestExecution = async () => {
+    setLoading(true);
+    const token = localStorage.getItem('token');
 
-  const finishTest = useCallback(() => setTestFinished(true), []);
+    try {
+      const res = await fetch(`/test/start/${id}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
 
-  useEffect(() => {
-    if (!testStarted || testFinished) return;
-    const timer = setInterval(() => setTimeLeft(p => p <= 1 ? (clearInterval(timer), finishTest(), 0) : p - 1), 1000);
-    return () => clearInterval(timer);
-  }, [testStarted, testFinished, finishTest]);
+      if (res.status === 403) { setIsBlocked(true); return; }
+      if (!res.ok) throw new Error("NOT_FOUND");
 
-  const handleNext = () => {
-    const isCorrect = currentQuestion.type === 'choice' 
-      ? selectedIdx === currentQuestion.correctAnswer 
-      : JSON.stringify(selectedIdx) === JSON.stringify(currentQuestion.correctAnswer);
-    
-    if (isCorrect) setScore(s => s + 1);
-    if (currentStep + 1 < totalSteps) { 
-      setCurrentStep(prev => prev + 1); 
-      setSelectedIdx(null); 
-    } else finishTest();
+      const responseJson = await res.json();
+      
+      // --- МАГИЯ РАСШИФРОВКИ (АНТИ-NETWORK) ---
+      // 1. Раскодируем Base64
+      const binaryStr = window.atob(responseJson.data);
+      const bytes = new Uint8Array(binaryStr.length);
+      const key = new TextEncoder().encode("magistral_secret_2026");
+
+      // 2. Снимаем XOR-шифрование
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i) ^ key[i % key.length];
+      }
+
+      // 3. Превращаем байты обратно в JSON
+      const decodedText = new TextDecoder('utf-8').decode(bytes);
+      const decodedData = JSON.parse(decodedText);
+      
+      // Имитируем процесс сборки ИИ-варианта
+      setTimeout(() => {
+        setQuestions(decodedData); // Передаем расшифрованные вопросы
+        setTestStarted(true);
+        setLoading(false);
+        
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const socketUrl = `${protocol}//${window.location.hostname}:8000/test/ws/monitor?token=${token}`;
+        socketRef.current = new WebSocket(socketUrl);
+        socketRef.current.onmessage = (e) => { if (e.data === "BLOCKED") setIsBlocked(true); };
+      }, 1500);
+
+    } catch (err) {
+      console.error("Ошибка инициализации или расшифровки:", err);
+      setLoading(false);
+    }
   };
 
+  // --- АНТИЧИТ: СЛЕЖКА ЗА ФОКУСОМ ---
+  useEffect(() => {
+    if (!testStarted || questions.length === 0) return;
+
+    const handleBlur = () => {
+      if (socketRef.current?.readyState === WebSocket.OPEN) {
+        socketRef.current.send("focus_lost");
+      }
+    };
+    const handleFocus = () => {
+      if (socketRef.current?.readyState === WebSocket.OPEN) {
+        socketRef.current.send("focus_gained");
+      }
+    };
+
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      socketRef.current?.close();
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [testStarted, questions]);
+
+  // --- ТАЙМЕР ---
+  useEffect(() => {
+    if (!testStarted || loading || questions.length === 0 || testFinished || isBlocked) return;
+    const timer = setInterval(() => {
+      setTimeLeft(p => p <= 1 ? (setTestFinished(true), 0) : p - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [testStarted, loading, questions, testFinished, isBlocked]);
+
+  // --- ОТПРАВКА ОТВЕТА ---
+  const handleNext = async () => {
+    let answeredCorrectly = false;
+
+    if (selectedIdx !== null) {
+      const q = questions[currentStep];
+      const token = localStorage.getItem('token');
+
+      try {
+        const res = await fetch(`/test/submit`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ question_id: q.id, selected_option: selectedIdx })
+        });
+        const result = await res.json();
+        if (result.correct) answeredCorrectly = true;
+      } catch(e) {
+        console.error("Ошибка отправки ответа", e);
+      }
+    }
+
+    if (answeredCorrectly) setScore(s => s + 1);
+
+    if (currentStep + 1 < questions.length) {
+      setCurrentStep(prev => prev + 1);
+      setSelectedIdx(null);
+    } else {
+      setTestFinished(true);
+    }
+  };
+
+  // --- ЭКРАН БЛОКИРОВКИ ---
+  if (isBlocked) return (
+    <div className="fixed inset-0 bg-white flex items-center justify-center p-6 text-center z-[3000] font-black italic uppercase">
+      <div className="max-w-md space-y-6">
+        <AlertTriangle size={80} className="text-red-600 mx-auto animate-bounce" />
+        <h2 className="text-3xl text-slate-900">ТЕСТ ЗАБЛОКИРОВАН</h2>
+        <p className="text-slate-400 leading-relaxed">Обнаружено нарушение правил тестирования. Результаты аннулированы.</p>
+        <button onClick={() => navigate('/')} className="w-full bg-slate-900 text-white py-5 rounded-3xl active:scale-95 transition-all">ВЕРНУТЬСЯ</button>
+      </div>
+    </div>
+  );
+
+  // --- ЭКРАН РЕЗУЛЬТАТОВ ---
+  if (testFinished) {
+    const percent = Math.round((score / (questions.length || 1)) * 100);
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 font-black italic uppercase">
+        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-2xl rounded-[4rem] shadow-2xl p-10 sm:p-16 border-4 border-blue-50 text-center space-y-10">
+          <div className="w-32 h-32 bg-yellow-400 text-white rounded-[2.5rem] flex items-center justify-center mx-auto shadow-2xl rotate-6"><Trophy size={64} /></div>
+          <div>
+            <h2 className="text-5xl text-slate-900 tracking-tighter mb-2">ТЕСТ ЗАВЕРШЕН</h2>
+            <p className="text-slate-400 tracking-widest text-xs">ВАШ РЕЗУЛЬТАТ ЗАФИКСИРОВАН В СИСТЕМЕ</p>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-slate-50 p-8 rounded-[2.5rem] border-2 border-white shadow-inner">
+               <div className="text-5xl text-blue-600">{score}/{questions.length}</div>
+               <div className="text-[10px] text-slate-400 mt-2">БАЛЛЫ</div>
+            </div>
+            <div className="bg-slate-50 p-8 rounded-[2.5rem] border-2 border-white shadow-inner">
+               <div className="text-5xl text-green-500">{percent}%</div>
+               <div className="text-[10px] text-slate-400 mt-2">РЕЗУЛЬТАТ</div>
+            </div>
+          </div>
+          <button onClick={() => navigate('/')} className="w-full bg-[#1976d2] text-white py-6 rounded-[2.5rem] shadow-xl hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-4">
+             В ПРОФИЛЬ <Home size={20}/>
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full max-w-4xl mx-auto p-4 font-sans text-slate-700">
-      <AnimatePresence>
-        {!testStarted && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[1000] bg-slate-50/90 backdrop-blur-md flex items-center justify-center p-6">
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-xl text-center max-w-sm border border-slate-100">
-              <div className="w-16 h-16 bg-sky-100 text-sky-600 rounded-full flex items-center justify-center mx-auto mb-6"><Lock /></div>
-              <h2 className="text-xl font-bold mb-2 uppercase text-slate-800 tracking-tight">Вход в систему</h2>
-              <p className="text-xs text-slate-400 mb-8 uppercase tracking-widest">Тема: Измерение информации [cite: 1]</p>
-              <button onClick={() => setTestStarted(true)} className="w-full bg-sky-400 hover:bg-sky-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-sky-100 transition-all">НАЧАТЬ</button>
+    <div className="w-full max-w-5xl mx-auto p-4 font-black italic uppercase text-slate-700 antialiased pb-20 relative min-h-[60vh]">
+      
+      {/* 1. ЭКРАН ПОДТВЕРЖДЕНИЯ */}
+      <AnimatePresence mode="wait">
+        {!testStarted && !loading && (
+          <motion.div 
+            key="start-modal" 
+            initial={{ opacity: 0, scale: 0.95 }} 
+            animate={{ opacity: 1, scale: 1 }} 
+            exit={{ opacity: 0, scale: 0.95 }} 
+            className="absolute inset-0 z-[1000] flex items-center justify-center p-6"
+          >
+            <div className="bg-white p-10 rounded-[3.5rem] shadow-2xl text-center max-w-md border-4 border-slate-50 w-full relative">
+              <Lock size={64} className="text-[#1976d2] mx-auto mb-6" />
+              <h2 className="text-3xl mb-4 text-[#1565c0] tracking-tighter">ДОСТУП ОТКРЫТ</h2>
+              <p className="text-[10px] text-slate-400 mb-8 leading-relaxed tracking-widest font-black">
+                ВНИМАНИЕ: ПОСЛЕ НАЖАТИЯ КНОПКИ БУДЕТ СФОРМИРОВАН ВАШ ПЕРСОНАЛЬНЫЙ ВАРИАНТ. ПОКИДАНИЕ ВКЛАДКИ ЗАПРЕЩЕНО.
+              </p>
+              <button 
+                onClick={startTestExecution} 
+                className="w-full bg-[#1976d2] text-white py-6 rounded-[2rem] shadow-xl hover:bg-blue-700 transition-all active:scale-95 font-black text-xl"
+              >
+                НАЧАТЬ РАБОТУ
+              </button>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {testStarted && !testFinished && (
-        <div className="space-y-6">
-          <div className="bg-white p-6 md:p-10 rounded-[2.5rem] shadow-sm border border-slate-50">
-            <div className="flex justify-between items-center mb-8">
-              <span className="text-[10px] font-bold bg-slate-50 px-4 py-2 rounded-full text-slate-500 uppercase tracking-tighter">Вопрос {currentStep + 1} из {totalSteps}</span>
-              <div className="flex items-center gap-2 font-mono text-lg font-bold text-slate-600 bg-slate-50 px-4 py-2 rounded-full border border-slate-100">
-                <Timer size={18} className="text-sky-400"/> {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
-              </div>
-            </div>
-
-            <div className="w-full h-1.5 bg-slate-100 rounded-full mb-10 overflow-hidden">
-              <motion.div initial={{ width: 0 }} animate={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }} className="h-full bg-sky-300" />
-            </div>
-
-            <h2 className="text-lg md:text-2xl font-bold mb-8 leading-tight text-slate-800">{currentQuestion.text}</h2>
-
-            <div className="grid gap-3">
-              {currentQuestion.type === 'choice' ? (
-                currentQuestion.options?.map((opt, i) => (
-                  <button key={i} onClick={() => setSelectedIdx(i)} className={`w-full text-left p-5 rounded-2xl border-2 transition-all flex items-center justify-between ${selectedIdx === i ? 'border-sky-300 bg-sky-50/50' : 'border-slate-50 hover:bg-slate-50'}`}>
-                    <span className={`text-sm font-semibold ${selectedIdx === i ? 'text-sky-800' : 'text-slate-600'}`}>{opt}</span>
-                    {selectedIdx === i && <CheckCircle2 size={18} className="text-sky-500" />}
-                  </button>
-                ))
-              ) : (
-                currentQuestion.items?.map(item => (
-                  <div key={item.id} className="p-4 bg-slate-50 rounded-2xl flex flex-col gap-3 border border-slate-100">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{item.text}</span>
-                    <div className="flex gap-2">
-                      {currentQuestion.categories?.map((cat, ci) => (
-                        <button key={ci} onClick={() => setSelectedIdx({...selectedIdx, [item.id]: ci})} className={`flex-1 py-2 rounded-xl text-[10px] font-bold uppercase transition-all ${selectedIdx?.[item.id] === ci ? 'bg-sky-400 text-white shadow-md' : 'bg-white text-slate-300 border border-slate-100'}`}>{cat}</button>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <button disabled={selectedIdx === null} onClick={handleNext} className="w-full mt-10 py-5 bg-sky-400 hover:bg-sky-500 text-white rounded-2xl font-bold shadow-lg shadow-sky-50 disabled:bg-slate-100 disabled:text-slate-300 transition-all flex items-center justify-center gap-2">
-              {currentStep + 1 === totalSteps ? 'ЗАВЕРШИТЬ' : 'ДАЛЕЕ'} <ChevronRight size={20}/>
-            </button>
+      {/* 2. ЭКРАН ГЕНЕРАЦИИ (ЛОАДЕР) */}
+      {loading && (
+        <div className="absolute inset-0 z-[1000] flex flex-col items-center justify-center space-y-6">
+          <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }}>
+            <Loader2 size={80} className="text-[#1976d2]" />
+          </motion.div>
+          <div className="text-center">
+            <h2 className="text-3xl font-black text-[#1565c0] animate-pulse italic">МАГИСТРАЛЬ ИИ</h2>
+            <p className="text-[10px] text-slate-400 mt-2 tracking-[0.3em]">ФОРМИРУЕМ ПЕРСОНАЛЬНЫЙ ВАРИАНТ...</p>
           </div>
         </div>
       )}
 
-      <AnimatePresence>
-        {testFinished && (
-          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white p-10 rounded-[3rem] shadow-xl text-center border border-slate-100 max-w-lg mx-auto">
-            <Trophy size={60} className="mx-auto text-amber-400 mb-6" />
-            <h2 className="text-5xl font-black mb-2 tracking-tighter text-slate-800">{percentage}%</h2>
-            
-            <div className={`px-10 py-4 rounded-2xl inline-block text-xs font-black uppercase tracking-widest mb-12 shadow-sm ${evalData.bgColor} ${evalData.textColor}`}>
-              {evalData.label} — ОЦЕНКА {evalData.grade}
-            </div>
-            
-            {/* Шкала уровней: Загорается постепенно */}
-            <div className="w-full h-12 bg-slate-100 rounded-full mb-12 relative overflow-hidden flex p-1.5 border border-slate-200">
-              <div className={`flex-1 flex items-center justify-center rounded-l-full text-[11px] font-black transition-all duration-500 ${evalData.grade >= 2 ? 'bg-rose-100 text-rose-700' : 'text-slate-300'}`}>2</div>
-              <div className={`flex-1 flex items-center justify-center text-[11px] font-black border-x border-white transition-all duration-700 ${evalData.grade >= 3 ? 'bg-amber-100 text-amber-800' : 'text-slate-300'}`}>3</div>
-              <div className={`flex-1 flex items-center justify-center text-[11px] font-black border-r border-white transition-all duration-1000 ${evalData.grade >= 4 ? 'bg-sky-100 text-sky-800' : 'text-slate-300'}`}>4</div>
-              <div className={`flex-1 flex items-center justify-center rounded-r-full text-[11px] font-black transition-all duration-[1200ms] ${evalData.grade >= 5 ? 'bg-emerald-100 text-emerald-800' : 'text-slate-300'}`}>5</div>
-            </div>
+      {/* 3. ПРОЦЕСС ТЕСТИРОВАНИЯ */}
+      {testStarted && !loading && questions.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pt-10 px-2 sm:px-6">
+           <div className="bg-white p-8 md:p-14 rounded-[3.5rem] shadow-2xl border border-slate-100 relative">
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-6 mb-12 border-b-2 border-slate-50 pb-8">
+                <div className="flex flex-col items-center sm:items-start">
+                  <span className="text-[10px] text-slate-400 mb-1">ТЕКУЩИЙ ПРОГРЕСС</span>
+                  <div className="bg-slate-100 px-6 py-2 rounded-full text-xs font-black text-slate-800 border border-slate-200">
+                    ВОПРОС {currentStep + 1} ИЗ {questions.length}
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-4 bg-blue-50 text-[#1976d2] px-8 py-3 rounded-full border-2 border-blue-100 shadow-sm">
+                  <Timer size={28} className="animate-pulse"/>
+                  <div className="text-3xl font-mono leading-none">
+                    {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+                  </div>
+                </div>
+              </div>
 
-            <button onClick={() => window.location.href = '/'} className="bg-slate-900 hover:bg-slate-800 text-white px-12 py-5 rounded-2xl font-bold text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center gap-3 mx-auto shadow-xl">
-              <RotateCcw size={18}/> НА ГЛАВНУЮ
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <div className="mb-14">
+                <div className="flex items-center gap-2 text-blue-500 mb-4">
+                  <BarChart3 size={18}/>
+                  <span className="text-[10px] tracking-[0.3em]">БЛОК ВОПРОСОВ МАГИСТРАЛЬ ИИ</span>
+                </div>
+                <h2 className="text-xl md:text-4xl font-black text-slate-900 leading-tight">
+                  {questions[currentStep].question}
+                </h2>
+              </div>
+
+              {/* УМНЫЙ ПАРСИНГ ВАРИАНТОВ (С УЧЕТОМ OPTIONS) */}
+              {(() => {
+                let rawVariants: string[] = [];
+                try {
+                  const q = questions[currentStep];
+                  const v = q.options || q.variants; 
+                  
+                  if (Array.isArray(v)) {
+                    rawVariants = v;
+                  } else if (typeof v === 'string') {
+                    rawVariants = JSON.parse(v || '[]');
+                  }
+                  
+                  rawVariants = rawVariants.filter((opt: string) => opt && opt.toString().trim().length > 0);
+                } catch (e) {
+                  console.error("Ошибка парсинга вариантов", e);
+                }
+                
+                return rawVariants.length > 0 ? (
+                  <div className="grid gap-4">
+                    {rawVariants.map((opt: string, i: number) => (
+                      <button 
+                        key={i} 
+                        onClick={() => setSelectedIdx(i)} 
+                        className={`w-full text-left p-6 sm:p-8 rounded-[2rem] border-2 transition-all flex items-center justify-between group shadow-sm hover:shadow-md ${selectedIdx === i ? 'border-[#1976d2] bg-blue-50 shadow-xl' : 'border-slate-100 bg-white hover:bg-slate-50'}`}
+                      >
+                        <span className={`text-base sm:text-xl font-black ${selectedIdx === i ? 'text-[#1976d2]' : 'text-slate-700'}`}>{opt}</span>
+                        <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center shrink-0 ${selectedIdx === i ? 'bg-[#1976d2] border-[#1976d2] text-white shadow-lg' : 'border-slate-200'}`}>
+                          {selectedIdx === i && <CheckCircle2 size={20} />}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-10 text-center space-y-4 bg-red-50 rounded-[2rem] border-2 border-red-100 mt-8 shadow-inner">
+                    <AlertTriangle size={48} className="text-red-400 mx-auto" />
+                    <div className="text-red-500 font-black text-xl tracking-tighter uppercase italic leading-none">ВАРИАНТЫ ОТВЕТОВ НЕ НАЙДЕНЫ</div>
+                    <div className="text-red-300 text-[10px] font-black tracking-widest leading-relaxed uppercase">
+                      В БАЗЕ ДАННЫХ ДЛЯ ЭТОГО ВОПРОСА НЕТ ВАРИАНТОВ. <br/> НАЖМИТЕ "ПРОПУСТИТЬ ШАГ", ЧТОБЫ ПЕРЕЙТИ ДАЛЬШЕ.
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* УМНАЯ КНОПКА СЛЕДУЮЩЕГО ШАГА */}
+              {(() => {
+                const hasVariants = (() => {
+                  try { 
+                    const q = questions[currentStep];
+                    const v = q.options || q.variants;
+                    const arr = Array.isArray(v) ? v : JSON.parse(v || '[]');
+                    return arr.filter((x: string) => x && x.trim().length > 0).length > 0;
+                  } catch { return false; }
+                })();
+
+                return (
+                  <button 
+                    disabled={hasVariants && selectedIdx === null} 
+                    onClick={handleNext} 
+                    className={`w-full mt-12 py-8 rounded-[2.5rem] font-black text-xl shadow-2xl transition-all flex items-center justify-center gap-4 ${hasVariants && selectedIdx === null ? 'bg-slate-100 text-slate-300 shadow-none' : 'bg-[#1976d2] text-white hover:bg-blue-700 active:scale-[0.98] shadow-blue-200'}`}
+                  >
+                    {currentStep + 1 === questions.length ? 'ЗАВЕРШИТЬ ТЕСТ' : (!hasVariants ? 'ПРОПУСТИТЬ ШАГ' : 'СЛЕДУЮЩИЙ ШАГ')} 
+                    <ChevronRight size={28}/>
+                  </button>
+                );
+              })()}
+           </div>
+        </motion.div>
+      )}
     </div>
   );
 };
