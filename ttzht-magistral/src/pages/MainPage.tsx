@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Cpu, ShieldCheck, Zap, BookOpen, ChevronRight, Layout } from 'lucide-react';
+import { 
+  Cpu, ShieldCheck, Zap, BookOpen, ChevronRight, Layout, Code, Atom, 
+  Calculator, FlaskConical, Globe, HardDrive, Terminal, Settings, Database, Activity 
+} from 'lucide-react';
 
-// Соответствует структуре CourseReq в Rust (бэкенд уже парсит JSON в объекты)
 interface Subject {
   id: string;
   title: string;
@@ -19,18 +21,27 @@ export const MainPage = () => {
 
   const iconMap: Record<string, React.ReactNode> = {
     Cpu: <Cpu size={24} />,
-    ShieldCheck: <ShieldCheck size={24} />,
     Zap: <Zap size={24} />,
+    ShieldCheck: <ShieldCheck size={24} />,
     BookOpen: <BookOpen size={24} />,
-    Layout: <Layout size={24} />
+    Layout: <Layout size={24} />,
+    Code: <Code size={24} />,
+    Atom: <Atom size={24} />,
+    Calculator: <Calculator size={24} />,
+    FlaskConical: <FlaskConical size={24} />,
+    Globe: <Globe size={24} />,
+    HardDrive: <HardDrive size={24} />,
+    Terminal: <Terminal size={24} />,
+    Settings: <Settings size={24} />,
+    Database: <Database size={24} />,
+    Activity: <Activity size={24} />
   };
 
   useEffect(() => {
     const fetchCourses = async () => {
       try {
         const token = localStorage.getItem('token');
-        // ИСПРАВЛЕНО: Эндпоинт /courses вместо /lessons
-        const response = await fetch('/courses', {
+        const response = await fetch('/storage/courses', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -38,7 +49,6 @@ export const MainPage = () => {
         
         if (response.ok) {
           const data = await response.json();
-          // Показываем только те, что не скрыты
           setSubjects(data.filter((s: Subject) => !s.isHidden));
         }
       } catch (error) {
@@ -57,7 +67,7 @@ export const MainPage = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px] font-black italic text-[#1976d2] animate-pulse uppercase">
-        ЗАГРУЗКА ДИСЦИПЛИН...
+        АНАЛИЗ УЧЕБНОЙ ПРОГРАММЫ...
       </div>
     );
   }
@@ -75,9 +85,12 @@ export const MainPage = () => {
         />
         <div className="absolute inset-0 z-20 p-6 sm:p-14 flex flex-col justify-center max-w-2xl space-y-4 text-white">
           <h2 className="text-2xl sm:text-6xl tracking-tighter leading-tight italic">ОБРАЗОВАТЕЛЬНАЯ ПЛАТФОРМА ТТЖТ</h2>
-          <button className="bg-white text-[#1976d2] px-8 py-4 rounded-2xl w-fit flex items-center gap-3 text-xs shadow-xl active:scale-95 transition-transform font-black">
-            О ПЛАТФОРМЕ <ChevronRight size={18}/>
-          </button>
+          <div className="flex items-center gap-4">
+             <button className="bg-white text-[#1976d2] px-8 py-4 rounded-2xl w-fit flex items-center gap-3 text-xs shadow-xl active:scale-95 transition-transform font-black">
+               О ПЛАТФОРМЕ <ChevronRight size={18}/>
+             </button>
+             <span className="text-[10px] opacity-60 tracking-widest hidden sm:block">ВЕРСИЯ 2.0 • СИСТЕМА МАГИСТРАЛЬ</span>
+          </div>
         </div>
         <div className="absolute right-12 bottom-12 z-20 text-white text-right hidden sm:block">
            <div className="text-9xl opacity-20 leading-none">{now.getDate()}</div>
@@ -85,10 +98,14 @@ export const MainPage = () => {
         </div>
       </div>
 
+      {/* СЕТКА ПРЕДМЕТОВ */}
       <div className="space-y-8 pb-20">
-        <h3 className="text-2xl text-[#1565c0] px-2 flex items-center gap-3 italic">
-          <Zap className="fill-current" /> ДОСТУПНЫЕ ДИСЦИПЛИНЫ
-        </h3>
+        <div className="flex justify-between items-end px-2">
+          <h3 className="text-2xl text-[#1565c0] flex items-center gap-3 italic">
+            <Zap className="fill-current" size={28} /> ДОСТУПНЫЕ ДИСЦИПЛИНЫ
+          </h3>
+          <span className="text-[10px] text-slate-300">ВСЕГО: {subjects.length}</span>
+        </div>
         
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
           {subjects.map((s) => (
@@ -97,18 +114,21 @@ export const MainPage = () => {
               onClick={() => navigate(`/subject/${s.id}`)}
               className="relative group cursor-pointer bg-white rounded-[2.5rem] shadow-xl hover:shadow-blue-200 transition-all overflow-hidden h-64 border border-blue-50 hover:-translate-y-2"
             >
-              {/* Используем цвет из БД или дефолтный */}
-              <div className={`absolute inset-0 bg-gradient-to-br ${s.color || 'from-blue-600 to-indigo-700'} opacity-90 group-hover:opacity-100 transition-opacity z-10`} />
+              {/* Градиент из БД */}
+              <div className={`absolute inset-0 bg-gradient-to-br ${s.color || 'from-blue-600 to-blue-800'} opacity-90 group-hover:opacity-100 transition-opacity z-10`} />
               
               <div className="absolute inset-0 z-20 p-8 flex flex-col justify-between text-white">
-                <div className="bg-white/20 p-4 rounded-2xl w-fit backdrop-blur-md">
+                <div className="bg-white/20 p-4 rounded-2xl w-fit backdrop-blur-md group-hover:scale-110 transition-transform">
                   {iconMap[s.iconName] || <Layout size={24} />}
                 </div>
                 <div>
-                  <h4 className="text-xl leading-tight mb-1 break-words font-black italic">{s.title}</h4>
-                  <p className="text-[10px] opacity-70 tracking-widest font-black italic">
-                    {s.sections.length} РАЗДЕЛОВ ДОСТУПНО
-                  </p>
+                  <h4 className="text-xl leading-tight mb-2 break-words font-black italic uppercase">{s.title}</h4>
+                  <div className="flex justify-between items-center">
+                    <p className="text-[10px] opacity-70 tracking-widest font-black italic">
+                      {s.sections.length} РАЗДЕЛОВ
+                    </p>
+                    <ChevronRight size={16} className="opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -116,7 +136,7 @@ export const MainPage = () => {
 
           {subjects.length === 0 && (
             <div className="col-span-full py-20 text-center opacity-30 text-xl border-4 border-dashed border-slate-200 rounded-[3rem] font-black italic">
-              НЕТ ДОСТУПНЫХ ПРЕДМЕТОВ В БАЗЕ ДАННЫХ
+              НЕТ ДОСТУПНЫХ ПРЕДМЕТОВ
             </div>
           )}
         </div>

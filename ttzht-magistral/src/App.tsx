@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User as UserIcon, LayoutGrid, Zap, LogOut, Settings, CheckCircle, Shield } from 'lucide-react';
+import { User as UserIcon, LayoutGrid, Zap, LogOut, Settings, CheckCircle } from 'lucide-react';
 
 import { MainPage } from './pages/MainPage';
 import { TestPage } from './pages/TestPage';
@@ -25,7 +25,6 @@ export default function App() {
         console.log("[DEBUG] ОБЪЕКТ ИЗ ПАМЯТИ:", parsed);
         setUser(parsed); 
       } catch (e) { 
-        console.error("Ошибка парсинга сессии:", e);
         localStorage.removeItem('user_auth'); 
       }
     }
@@ -33,27 +32,31 @@ export default function App() {
   }, []);
 
   const handleAuthSuccess = (data: AuthResponse) => {
-    console.log("[DEBUG] УСПЕШНЫЙ ВХОД. ДАННЫЕ С СЕРВЕРА:", data);
     localStorage.setItem('token', data.token);
     localStorage.setItem('user_auth', JSON.stringify(data.user));
     setUser(data.user);
-    setNotification(`ДОБРО ПОЖАЛОВАТЬ, ${(data.user.login || 'ПОЛЬЗОВАТЕЛЬ').toUpperCase()}!`);
+    setNotification(`ДОБРО ПОЖАЛОВАТЬ!`);
+    setTimeout(() => setNotification(null), 3000);
   };
 
   if (loading) return null;
 
-  // --- ЛОГИКА ОПРЕДЕЛЕНИЯ РОЛИ ---
-  // Проверяем все варианты: snake_case (из БД) и camelCase (из Serde)
-  const roleRaw = user?.account_type || (user as any)?.accountType || "";
-  const role = roleRaw.toString().trim(); // Оставляем оригинальный регистр для сравнения
-  const login = user?.login?.toLowerCase() || "";
+  const getRole = () => {
+    if (!user) return "";
+    const rawRole = (user as any).accountType || (user as any).account_type || "";
+    return rawRole.toString();
+  };
 
-  // Сравнение с учетом регистра, который мы прописали в Rust enum
-  const isAdmin = role === 'Admin' || login === 'admin';
-  const isTeacher = role === 'Teacher';
-  const isStudent = role === 'Student';
+  const role = getRole();
+  const userLogin = (user?.login || "").toLowerCase();
 
-  console.log(`[DEBUG] ПРОВЕРКА ПРАВ: Роль="${role}" | Это Админ?=${isAdmin} | Это Учитель?=${isTeacher}`);
+  // Проверка прав (регистронезависимая)
+  const isAdmin = role.toLowerCase() === 'admin' || userLogin === 'admin';
+  const isTeacher = role.toLowerCase() === 'teacher';
+  // Если залогинен, но роль не распознана — считаем студентом (безопасный дефолт)
+  const isStudent = role.toLowerCase() === 'student' || (!isAdmin && !isTeacher && !!user);
+
+  console.log(`[DEBUG] ПРОВЕРКА: Роль в БД="${role}" | Итог: Admin=${isAdmin}, Student=${isStudent}`);
 
   const getProfilePath = () => {
     if (isAdmin) return "/admin";
@@ -92,15 +95,11 @@ export default function App() {
 
                 <div className="flex items-center gap-2 sm:gap-4">
                   <NavLink to="/" icon={<LayoutGrid size={18}/>} label="ПРЕДМЕТЫ" />
-                  
                   {isAdmin && <NavLink to="/admin" icon={<Settings size={18}/>} label="АДМИНКА" />}
-                  
                   <NavLink to={getProfilePath()} icon={<UserIcon size={18}/>} label="ПРОФИЛЬ" />
-                  
                   <button 
                     onClick={() => { localStorage.clear(); window.location.href = '/'; }} 
                     className="text-red-500 hover:bg-red-50 p-2 rounded-xl transition-all"
-                    title="ВЫЙТИ"
                   >
                     <LogOut size={18}/>
                   </button>
@@ -108,11 +107,11 @@ export default function App() {
               </div>
             </nav>
 
-            <main className="max-w-7xl mx-auto w-full p-6 flex-1 flex flex-col items-center">
+            <main className="max-w-7xl mx-auto w-full p-6 flex-1">
               <Routes>
                 <Route path="/" element={<MainPage />} />
                 
-                {/* Динамические маршруты с защитой по роли */}
+                {/* Маршруты с защитой и редиректом при ошибке прав */}
                 <Route path="/admin" element={isAdmin ? <AdminPanel /> : <Navigate to={getProfilePath()} />} />
                 <Route path="/teacher" element={isTeacher ? <TeacherProfile /> : <Navigate to={getProfilePath()} />} />
                 <Route path="/student" element={isStudent ? <StudentProfile /> : <Navigate to={getProfilePath()} />} />
@@ -120,6 +119,7 @@ export default function App() {
                 <Route path="/subject/:id" element={<SubjectSectionsPage />} />
                 <Route path="/test/:id" element={<TestPage />} />
                 
+                {/* Если зашли не туда — кидаем на главную */}
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             </main>
@@ -132,7 +132,7 @@ export default function App() {
 
 function NavLink({ to, icon, label }: any) {
   return (
-    <Link to={to} className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-slate-500 hover:text-[#1976d2] transition-all font-black text-[10px] border-2 border-transparent hover:border-blue-100 uppercase italic whitespace-nowrap">
+    <Link to={to} className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-slate-500 hover:text-[#1976d2] transition-all font-black text-[10px] border-2 border-transparent hover:border-blue-100 uppercase italic">
       {icon} <span className="hidden sm:inline">{label}</span>
     </Link>
   );

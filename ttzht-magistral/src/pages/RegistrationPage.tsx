@@ -12,7 +12,6 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onAuthSucces
   const [groups, setGroups] = useState<Group[]>([]);
   const [error, setError] = useState<string | null>(null);
   
-  // СЕКРЕТНЫЙ ФУНКЦИОНАЛ ДЛЯ АДМИНА
   const [adminClickCount, setAdminClickCount] = useState(0);
   const [isAdminVisible, setIsAdminVisible] = useState(false);
 
@@ -49,7 +48,6 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onAuthSucces
 
     const url = mode === 'login' ? '/auth/login' : '/auth/register';
     
-    // Payload теперь всегда включает account_type для логина
     const payload = mode === 'login' 
       ? { 
           login: formData.email, 

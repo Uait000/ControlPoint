@@ -16,7 +16,7 @@ export interface User {
     account_type: AccountType;
     first_name?: string;
     second_name?: string;
-    belongs_to?: number; // ID группы для студента
+    belongs_to?: number; 
 }
 
 export interface AuthResponse {
@@ -24,7 +24,6 @@ export interface AuthResponse {
     user: User;
 }
 
-// Существующие типы контента
 export type QuestionType = 'choice' | 'matching' | 'classification';
 
 export interface Question {

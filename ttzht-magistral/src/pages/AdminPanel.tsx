@@ -21,42 +21,47 @@ export const AdminPanel = () => {
   const [showIconPicker, setShowIconPicker] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const headers = {
-    'Authorization': `Bearer ${localStorage.getItem('token')}`,
-    'Content-Type': 'application/json'
+  const getHeaders = (isJson = true) => {
+    const h: any = {
+      'Authorization': `Bearer ${localStorage.getItem('token')}`
+    };
+    if (isJson) h['Content-Type'] = 'application/json';
+    return h;
   };
 
+  // Загрузка 
   const fetchSubjects = async () => {
     try {
-      const res = await fetch('/courses', { headers });
+      const res = await fetch('/storage/courses', { headers: getHeaders() });
       if (res.ok) {
         const data = await res.json();
         setSubjects(data);
       }
     } catch (e) {
-      console.error("ОШИБКА FETCH:", e);
+      console.error("ОШИБКА ЗАГРУЗКИ:", e);
     }
   };
 
   useEffect(() => { fetchSubjects(); }, []);
 
+  // Сохранение 
   const syncWithServer = async (subject: Subject) => {
     setIsSyncing(true);
     try {
-      const res = await fetch(`/courses/${subject.id}`, {
+      const res = await fetch(`/storage/courses/${subject.id}`, {
         method: 'PATCH',
-        headers,
+        headers: getHeaders(),
         body: JSON.stringify(subject)
       });
-      if (!res.ok) throw new Error("СЕРВЕР ОТКЛОНИЛ ИЗМЕНЕНИЯ");
+      if (!res.ok) throw new Error();
     } catch (e) {
-      alert("ОШИБКА СОХРАНЕНИЯ");
+      console.error("ОШИБКА СОХРАНЕНИЯ");
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // ИСПРАВЛЕНО: Теперь отправляем id: "0", чтобы бэкенд прошел валидацию
+  // Создание предмета 
   const addSubject = async () => {
     const newSubData = { 
         id: "0", 
@@ -68,85 +73,51 @@ export const AdminPanel = () => {
     };
     
     try {
-        const res = await fetch('/courses', {
+        const res = await fetch('/storage/courses', {
             method: 'POST',
-            headers,
+            headers: getHeaders(),
             body: JSON.stringify(newSubData)
         });
 
         if (res.ok) {
             const newId = await res.json();
-            const createdSubject = { ...newSubData, id: newId.toString() } as Subject;
-            setSubjects([...subjects, createdSubject]);
-            setExpandedSubjectId(createdSubject.id);
-        } else {
-            const errText = await res.text();
-            console.error("Бэкенд отклонил создание:", errText);
+            const created = { ...newSubData, id: newId.toString() } as Subject;
+            setSubjects([...subjects, created]);
+            setExpandedSubjectId(created.id);
         }
     } catch (e) {
-        alert("ОШИБКА ПРИ СОЗДАНИИ");
+        alert("ОШИБКА СОЗДАНИЯ ПРЕДМЕТА");
     }
   };
 
+  // Удаление 
   const deleteSubject = async (id: string) => {
-    if (!window.confirm("УДАЛИТЬ ПРЕДМЕТ ЦЕЛИКОМ?")) return;
+    if (!window.confirm("УДАЛИТЬ ПРЕДМЕТ?")) return;
     try {
-      const res = await fetch(`/courses/${id}`, {
+      const res = await fetch(`/storage/courses/${id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: getHeaders(false)
       });
-      if (res.ok) {
-        setSubjects(subjects.filter(s => s.id !== id));
-      }
+      if (res.ok) setSubjects(subjects.filter(s => s.id !== id));
     } catch (e) {
       alert("ОШИБКА УДАЛЕНИЯ");
     }
   };
 
-  const deleteLecture = async (subjectId: string, sectionId: string, subId: string, lectureId: string, fileName: string) => {
-    if (!window.confirm("УДАЛИТЬ ЭТОТ ДОКУМЕНТ?")) return;
-
-    await fetch(`/courses/file/${fileName}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
-
-    const updated = subjects.map(s => {
-      if (s.id === subjectId) {
-        const newSections = s.sections.map(sec => {
-          if (sec.id === sectionId) {
-            const newSubs = sec.subSections.map(sub => {
-              if (sub.id === subId) {
-                return { ...sub, lectures: sub.lectures.filter(l => l.id !== lectureId) };
-              }
-              return sub;
-            });
-            return { ...sec, subSections: newSubs };
-          }
-          return sec;
-        });
-        const updatedSub = { ...s, sections: newSections };
-        syncWithServer(updatedSub);
-        return updatedSub;
-      }
-      return s;
-    });
-    setSubjects(updated);
-  };
-
+  //Загрузка PDF 
   const handleFileUpload = async (subjectId: string, sectionId: string, subId: string, file: File, replaceId?: string) => {
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-      const uploadRes = await fetch('/courses/upload', {
+      const uploadRes = await fetch('/storage/courses/upload', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
         body: formData
       });
       
-      if (!uploadRes.ok) throw new Error("ОШИБКА СЕРВЕРА ПРИ ЗАГРУЗКЕ");
-      const hashedFileName = await uploadRes.json();
+      if (!uploadRes.ok) throw new Error();
+      const hashedName = await uploadRes.json();
 
       const updated = subjects.map(s => {
         if (s.id === subjectId) {
@@ -154,15 +125,13 @@ export const AdminPanel = () => {
             if (sec.id === sectionId) {
               const newSubs = sec.subSections.map(sub => {
                 if (sub.id === subId) {
-                  if (replaceId) {
-                    const newLectures = sub.lectures.map(l => 
-                      l.id === replaceId ? { ...l, title: file.name, fileName: hashedFileName } : l
-                    );
-                    return { ...sub, lectures: newLectures };
-                  } else {
-                    const newLecture = { id: Date.now().toString(), title: file.name, fileName: hashedFileName };
-                    return { ...sub, lectures: [...sub.lectures, newLecture] };
-                  }
+                  const newLecture = { id: Date.now().toString(), title: file.name, fileName: hashedName };
+                  return { 
+                    ...sub, 
+                    lectures: replaceId 
+                      ? sub.lectures.map(l => l.id === replaceId ? newLecture : l)
+                      : [...sub.lectures, newLecture]
+                  };
                 }
                 return sub;
               });
@@ -177,8 +146,9 @@ export const AdminPanel = () => {
         return s;
       });
       setSubjects(updated);
-    } catch (e: any) {
-      alert(`ОШИБКА: ${e.message}`);
+      alert("ФАЙЛ ЗАГРУЖЕН");
+    } catch (e) {
+      alert("ОШИБКА ЗАГРУЗКИ");
     }
   };
 
@@ -188,7 +158,7 @@ export const AdminPanel = () => {
         <div className="text-center sm:text-left">
           <h2 className="text-2xl md:text-3xl text-[#1565c0] tracking-tighter leading-none">ПАНЕЛЬ УПРАВЛЕНИЯ</h2>
           <p className="text-[10px] text-slate-300 mt-1 uppercase">
-            {isSyncing ? 'СИНХРОНИЗАЦИЯ С БД...' : 'РЕДАКТОР КУРСОВ И МАТЕРИАЛОВ'}
+            {isSyncing ? 'СОХРАНЕНИЕ В БД...' : 'МЕНЕДЖЕР КУРСОВ ТТЖТ'}
           </p>
         </div>
         <button onClick={addSubject} className="w-full sm:w-auto bg-[#1976d2] text-white px-8 py-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg active:scale-95 transition-all text-xs">
@@ -199,37 +169,14 @@ export const AdminPanel = () => {
       <div className="grid gap-4 md:gap-8">
         {subjects.map(subject => (
           <div key={subject.id} className={`bg-white rounded-[2rem] md:rounded-[3.5rem] transition-all duration-500 overflow-hidden border-4 ${expandedSubjectId === subject.id ? 'border-blue-100 shadow-xl' : 'border-transparent shadow-sm'}`}>
-            
             <div className="p-5 md:p-10 flex items-center justify-between cursor-pointer" onClick={() => setExpandedSubjectId(expandedSubjectId === subject.id ? null : subject.id)}>
               <div className="flex items-center gap-3 md:gap-6 flex-1 min-w-0">
-                <div className="relative group/icon">
-                  <div 
-                    onClick={(e) => { e.stopPropagation(); setShowIconPicker(showIconPicker === subject.id ? null : subject.id); }}
-                    className={`flex items-center justify-center aspect-square p-3 md:p-4 rounded-xl md:rounded-2xl shrink-0 transition-all hover:scale-105 active:scale-90 relative ${subject.isHidden ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-blue-600 shadow-inner'}`}
-                  >
-                    {AVAILABLE_ICONS.find(i => i.name === subject.iconName)?.Icon ? React.createElement(AVAILABLE_ICONS.find(i => i.name === subject.iconName)!.Icon, { size: 24 }) : <Layout size={24}/>}
-                    <div className="absolute -top-1 -right-1 bg-white p-1 rounded-full shadow-md border border-blue-100 text-blue-600"><Edit3 size={10}/></div>
-                  </div>
-
-                  <AnimatePresence>
-                    {showIconPicker === subject.id && (
-                      <motion.div initial={{ opacity: 0, scale: 0.9, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 10 }} className="absolute top-full left-0 mt-4 bg-white p-4 rounded-3xl shadow-2xl z-[200] grid grid-cols-5 gap-3 border border-blue-50 w-[260px]" onClick={(e) => e.stopPropagation()}>
-                        {AVAILABLE_ICONS.map((ico) => (
-                          <button key={ico.name} onClick={() => { 
-                            const updated = {...subject, iconName: ico.name};
-                            setSubjects(subjects.map(s => s.id === subject.id ? updated : s));
-                            syncWithServer(updated);
-                            setShowIconPicker(null); 
-                          }} className={`flex items-center justify-center aspect-square p-3 rounded-xl transition-all ${subject.iconName === ico.name ? 'bg-[#1976d2] text-white shadow-lg' : 'hover:bg-blue-50 text-slate-400'}`}><ico.Icon size={20} /></button>
-                        ))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                <div className="bg-blue-50 text-blue-600 p-4 rounded-2xl shrink-0">
+                   {AVAILABLE_ICONS.find(i => i.name === subject.iconName)?.Icon ? React.createElement(AVAILABLE_ICONS.find(i => i.name === subject.iconName)!.Icon, { size: 24 }) : <Layout size={24}/>}
                 </div>
-
-                <div className="flex-1 relative group/title">
+                <div className="flex-1">
                    <input 
-                    className="text-base md:text-2xl text-[#1565c0] bg-transparent border-none outline-none font-black w-full truncate uppercase italic placeholder:text-blue-100" 
+                    className="text-base md:text-2xl text-[#1565c0] bg-transparent border-none outline-none font-black w-full truncate uppercase italic" 
                     value={subject.title} 
                     onClick={(e) => e.stopPropagation()} 
                     onChange={(e) => setSubjects(subjects.map(s => s.id === subject.id ? {...s, title: e.target.value} : s))}
@@ -237,28 +184,23 @@ export const AdminPanel = () => {
                    />
                 </div>
               </div>
-
-              <div className="flex items-center gap-1 md:gap-4 ml-2">
-                <button onClick={(e) => { e.stopPropagation(); const updated = {...subject, isHidden: !subject.isHidden}; setSubjects(subjects.map(s => s.id === subject.id ? updated : s)); syncWithServer(updated); }} className="p-2 text-slate-300 hover:text-blue-500">{subject.isHidden ? <EyeOff size={18}/> : <Eye size={18}/>}</button>
-                <button onClick={(e) => { e.stopPropagation(); deleteSubject(subject.id); }} className="p-2 text-red-300 hover:text-red-500"><Trash2 size={18}/></button>
-                <ChevronDown size={24} className={`text-slate-200 transition-transform ${expandedSubjectId === subject.id ? 'rotate-180' : ''}`} />
-              </div>
+              <ChevronDown size={24} className={`text-slate-200 transition-transform ${expandedSubjectId === subject.id ? 'rotate-180' : ''}`} />
             </div>
 
             <AnimatePresence>
               {expandedSubjectId === subject.id && (
-                <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="border-t border-slate-50 bg-slate-50/15">
-                  <div className="p-4 md:p-10 space-y-6 md:space-y-10">
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="border-t border-slate-50 bg-slate-50/15 overflow-hidden">
+                  <div className="p-4 md:p-10 space-y-6">
                     <button onClick={() => {
                         const updated = {...subject, sections: [...subject.sections, { id: Date.now().toString(), title: 'НОВЫЙ РАЗДЕЛ', subSections: [] }]};
                         setSubjects(subjects.map(s => s.id === subject.id ? updated : s));
                         syncWithServer(updated);
-                    }} className="w-full py-4 border-2 border-dashed border-blue-200 rounded-2xl text-blue-400 flex items-center justify-center gap-3 hover:bg-blue-50 transition-all font-black text-[10px] uppercase italic active:scale-95 shadow-sm"><FolderPlus size={18}/> ДОБАВИТЬ РАЗДЕЛ</button>
+                    }} className="w-full py-4 border-2 border-dashed border-blue-200 rounded-2xl text-blue-400 flex items-center justify-center gap-3 font-black text-[10px] uppercase italic active:scale-95 shadow-sm"><FolderPlus size={18}/> ДОБАВИТЬ РАЗДЕЛ</button>
                     
                     <div className="space-y-6">
                       {subject.sections.map((section, sIdx) => (
                         <div key={section.id} className="md:ml-10 border-l-4 border-blue-100 pl-4 md:pl-8 space-y-4">
-                          <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-50">
+                          <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm">
                             <div className="flex items-center gap-3 flex-1">
                                <span className="text-blue-200 text-lg font-bold">0{sIdx + 1}</span>
                                <input 
@@ -268,52 +210,26 @@ export const AdminPanel = () => {
                                 onBlur={() => syncWithServer(subject)}
                                />
                             </div>
-                            <div className="flex gap-2">
-                              <button onClick={() => {
-                                  const updated = {...subject, sections: subject.sections.map(sec => sec.id === section.id ? {...sec, subSections: [...sec.subSections, { id: Date.now().toString(), title: 'НОВЫЙ ПУНКТ', time: '20 МИН', status: 'active', lectures: [] }]} : sec)};
-                                  setSubjects(subjects.map(s => s.id === subject.id ? updated : s));
-                                  syncWithServer(updated);
-                              }} className="text-blue-500 bg-blue-50 px-3 py-1.5 rounded-lg text-[8px] font-black italic shadow-sm">+ ПУНКТ</button>
-                              <button onClick={() => {
-                                  const updated = {...subject, sections: subject.sections.filter(sec => sec.id !== section.id)};
-                                  setSubjects(subjects.map(s => s.id === subject.id ? updated : s));
-                                  syncWithServer(updated);
-                              }} className="text-red-300 p-1 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
-                            </div>
+                            <button onClick={() => {
+                                const updated = {...subject, sections: subject.sections.map(sec => sec.id === section.id ? {...sec, subSections: [...sec.subSections, { id: Date.now().toString(), title: 'НОВЫЙ ПУНКТ', time: '20 МИН', status: 'active', lectures: [] }]} : sec)};
+                                setSubjects(subjects.map(s => s.id === subject.id ? updated : s));
+                                syncWithServer(updated);
+                            }} className="text-blue-500 bg-blue-50 px-3 py-1.5 rounded-lg text-[8px] font-black">+ ПУНКТ</button>
                           </div>
 
                           <div className="grid gap-3 md:ml-8">
                             {section.subSections.map((sub) => (
-                              <div key={sub.id} className="bg-white/80 p-4 md:p-5 rounded-2xl border-2 border-dashed border-blue-100 space-y-4 shadow-sm relative group/sub">
-                                <div className="flex justify-between items-center gap-2">
-                                   <input 
-                                    className="bg-transparent border-none outline-none text-[#1976d2] text-xs font-black w-full uppercase" 
-                                    value={sub.title} 
-                                    onChange={(e) => setSubjects(subjects.map(s => s.id === subject.id ? {...s, sections: s.sections.map(sec => sec.id === section.id ? {...sec, subSections: sec.subSections.map(ss => ss.id === sub.id ? {...ss, title: e.target.value} : ss)} : sec)} : s))}
-                                    onBlur={() => syncWithServer(subject)}
-                                   />
-                                   <button onClick={() => {
-                                       const updated = {...subject, sections: subject.sections.map(sec => sec.id === section.id ? {...sec, subSections: sec.subSections.filter(ss => ss.id !== sub.id)} : sec)};
-                                       setSubjects(subjects.map(s => s.id === subject.id ? updated : s));
-                                       syncWithServer(updated);
-                                   }} className="text-red-200 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
-                                </div>
+                              <div key={sub.id} className="bg-white/80 p-4 md:p-5 rounded-2xl border-2 border-dashed border-blue-100 space-y-4">
+                                <input 
+                                 className="bg-transparent border-none outline-none text-[#1976d2] text-xs font-black w-full uppercase" 
+                                 value={sub.title} 
+                                 onChange={(e) => setSubjects(subjects.map(s => s.id === subject.id ? {...s, sections: s.sections.map(sec => sec.id === section.id ? {...sec, subSections: sec.subSections.map(ss => ss.id === sub.id ? {...ss, title: e.target.value} : ss)} : sec)} : s))}
+                                 onBlur={() => syncWithServer(subject)}
+                                />
                                 <div className="flex flex-wrap items-center gap-2">
                                   {sub.lectures.map(l => (
                                     <div key={l.id} className="flex items-center gap-2 bg-green-50 text-green-700 text-[8px] px-2 py-1 rounded-lg border border-green-100 font-black">
                                       <FileText size={10}/> {l.title}
-                                      <div className="flex gap-2 ml-1 border-l border-green-200 pl-2">
-                                        <label className="cursor-pointer hover:text-blue-600 transition-colors">
-                                          <RefreshCw size={10}/>
-                                          <input 
-                                            type="file" accept=".pdf" className="hidden" 
-                                            onChange={(e) => e.target.files?.[0] && handleFileUpload(subject.id, section.id, sub.id, e.target.files[0], l.id)} 
-                                          />
-                                        </label>
-                                        <button onClick={() => deleteLecture(subject.id, section.id, sub.id, l.id, l.fileName)} className="hover:text-red-600 transition-colors">
-                                          <Trash2 size={10}/>
-                                        </button>
-                                      </div>
                                     </div>
                                   ))}
                                   <label className="cursor-pointer bg-white text-[#1976d2] border-2 border-[#1976d2] px-3 py-2 rounded-xl text-[9px] flex items-center gap-2 hover:bg-[#1976d2] hover:text-white transition-all font-black italic shadow-sm active:scale-95">

@@ -22,7 +22,6 @@ export const TestPage = () => {
 
   const socketRef = useRef<WebSocket | null>(null);
 
-  // --- ЛОГИКА ЗАПУСКА ТЕСТА (ГЕНЕРАЦИЯ С РАСШИФРОВКОЙ) ---
   const startTestExecution = async () => {
     setLoading(true);
     const token = localStorage.getItem('token');
@@ -38,24 +37,20 @@ export const TestPage = () => {
 
       const responseJson = await res.json();
       
-      // --- МАГИЯ РАСШИФРОВКИ (АНТИ-NETWORK) ---
-      // 1. Раскодируем Base64
       const binaryStr = window.atob(responseJson.data);
       const bytes = new Uint8Array(binaryStr.length);
       const key = new TextEncoder().encode("magistral_secret_2026");
 
-      // 2. Снимаем XOR-шифрование
       for (let i = 0; i < binaryStr.length; i++) {
         bytes[i] = binaryStr.charCodeAt(i) ^ key[i % key.length];
       }
 
-      // 3. Превращаем байты обратно в JSON
       const decodedText = new TextDecoder('utf-8').decode(bytes);
       const decodedData = JSON.parse(decodedText);
       
       // Имитируем процесс сборки ИИ-варианта
       setTimeout(() => {
-        setQuestions(decodedData); // Передаем расшифрованные вопросы
+        setQuestions(decodedData); 
         setTestStarted(true);
         setLoading(false);
         
@@ -71,7 +66,7 @@ export const TestPage = () => {
     }
   };
 
-  // --- АНТИЧИТ: СЛЕЖКА ЗА ФОКУСОМ ---
+  // АНТИЧИТ: СЛЕЖКА ЗА ФОКУСОМ 
   useEffect(() => {
     if (!testStarted || questions.length === 0) return;
 
@@ -96,7 +91,7 @@ export const TestPage = () => {
     };
   }, [testStarted, questions]);
 
-  // --- ТАЙМЕР ---
+  // ТАЙМЕР 
   useEffect(() => {
     if (!testStarted || loading || questions.length === 0 || testFinished || isBlocked) return;
     const timer = setInterval(() => {
@@ -105,7 +100,7 @@ export const TestPage = () => {
     return () => clearInterval(timer);
   }, [testStarted, loading, questions, testFinished, isBlocked]);
 
-  // --- ОТПРАВКА ОТВЕТА ---
+  // ОТПРАВКА ОТВЕТА
   const handleNext = async () => {
     let answeredCorrectly = false;
 
@@ -139,7 +134,7 @@ export const TestPage = () => {
     }
   };
 
-  // --- ЭКРАН БЛОКИРОВКИ ---
+  // ЭКРАН БЛОКИРОВКИ
   if (isBlocked) return (
     <div className="fixed inset-0 bg-white flex items-center justify-center p-6 text-center z-[3000] font-black italic uppercase">
       <div className="max-w-md space-y-6">
@@ -151,7 +146,7 @@ export const TestPage = () => {
     </div>
   );
 
-  // --- ЭКРАН РЕЗУЛЬТАТОВ ---
+  // ЭКРАН РЕЗУЛЬТАТОВ 
   if (testFinished) {
     const percent = Math.round((score / (questions.length || 1)) * 100);
     return (
@@ -183,7 +178,7 @@ export const TestPage = () => {
   return (
     <div className="w-full max-w-5xl mx-auto p-4 font-black italic uppercase text-slate-700 antialiased pb-20 relative min-h-[60vh]">
       
-      {/* 1. ЭКРАН ПОДТВЕРЖДЕНИЯ */}
+      {/* ЭКРАН ПОДТВЕРЖДЕНИЯ */}
       <AnimatePresence mode="wait">
         {!testStarted && !loading && (
           <motion.div 
@@ -210,7 +205,7 @@ export const TestPage = () => {
         )}
       </AnimatePresence>
 
-      {/* 2. ЭКРАН ГЕНЕРАЦИИ (ЛОАДЕР) */}
+      {/*ЭКРАН ГЕНЕРАЦИИ (ЛОАДЕР) */}
       {loading && (
         <div className="absolute inset-0 z-[1000] flex flex-col items-center justify-center space-y-6">
           <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }}>
@@ -223,7 +218,7 @@ export const TestPage = () => {
         </div>
       )}
 
-      {/* 3. ПРОЦЕСС ТЕСТИРОВАНИЯ */}
+      {/*ПРОЦЕСС ТЕСТИРОВАНИЯ */}
       {testStarted && !loading && questions.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pt-10 px-2 sm:px-6">
            <div className="bg-white p-8 md:p-14 rounded-[3.5rem] shadow-2xl border border-slate-100 relative">
@@ -253,7 +248,7 @@ export const TestPage = () => {
                 </h2>
               </div>
 
-              {/* УМНЫЙ ПАРСИНГ ВАРИАНТОВ (С УЧЕТОМ OPTIONS) */}
+              {/* УМНЫЙ ПАРСИНГ ВАРИАНТОВ (С УЧЕТОМ OPTIONS) 50 на 50 может тут проблема*/}
               {(() => {
                 let rawVariants: string[] = [];
                 try {
