@@ -34,7 +34,6 @@ export const TeacherProfile = () => {
     fetch('/tests/available', { headers }).then(r => r.json()).then(data => setAvailableTests(Array.isArray(data) ? data : []));
     fetch('/auth/students', { headers }).then(r => r.json()).then(data => setStudents(Array.isArray(data) ? data : []));
 
-
     const connectWS = () => {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws.current = new WebSocket(`${protocol}//${window.location.host}/test/ws/monitor`);
@@ -52,10 +51,9 @@ export const TeacherProfile = () => {
     return () => ws.current?.close();
   }, []);
 
-  // Фильтруем пулы вопросов по дисциплине
   const filteredPools = useMemo(() => {
     if (!selSub) return [];
-    return availableTests.filter(t => String(t.belongs_to) === selSub || t.belongs_to === 0);
+    return availableTests.filter(t => String(t.belongs_to) === String(selSub));
   }, [availableTests, selSub]);
 
   const handleAssignTest = async () => {
@@ -80,7 +78,6 @@ export const TeacherProfile = () => {
   return (
     <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 space-y-6 pb-20 text-sm font-bold antialiased italic uppercase text-slate-700">
       
-      {/* HEADER */}
       <div className="bg-white p-6 sm:p-10 rounded-[3rem] shadow-xl border border-[#e1eefb] flex flex-col lg:flex-row items-center gap-8">
         <div className="relative">
           <div className="w-32 h-32 bg-slate-900 rounded-[2.5rem] border-8 border-blue-50 overflow-hidden shadow-2xl">
@@ -97,10 +94,9 @@ export const TeacherProfile = () => {
         </div>
       </div>
 
-      {/* МОНИТОРИНГ ГРУПП */}
       <div className="grid gap-6">
         {groups.map(group => (
-          <div key={group.id} className="bg-white rounded-[2.5rem] shadow-lg border border-blue-50 overflow-hidden">
+          <div key={`group-card-${group.id}`} className="bg-white rounded-[2.5rem] shadow-lg border border-blue-50 overflow-hidden">
             <div className="p-6 flex justify-between items-center cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => setExpandedGroups(p => p.includes(group.id) ? p.filter(id => id !== group.id) : [...p, group.id])}>
               <div className="flex items-center gap-4">
                  <div className="bg-blue-600 text-white p-3 rounded-2xl shadow-md"><Users size={20}/></div>
@@ -123,7 +119,7 @@ export const TeacherProfile = () => {
                       </thead>
                       <tbody>
                         {students.filter(s => String(s.belongs_to) === String(group.id)).map(student => (
-                          <tr key={student.id} className="border-b border-white/50">
+                          <tr key={`student-${student.id}`} className="border-b border-white/50">
                             <td className="py-4 px-4 font-bold">{student.second_name} {student.first_name}</td>
                             <td className="py-4 px-4 text-center">
                                <StatusBadge status={liveMonitor[student.id]?.status || 'Offline'} />
@@ -148,7 +144,6 @@ export const TeacherProfile = () => {
         ))}
       </div>
 
-      {/* МОДАЛКА НАЗНАЧЕНИЯ */}
       <AnimatePresence>
         {showCreateModal && (
           <div className="fixed inset-0 z-[1000] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
@@ -163,25 +158,22 @@ export const TeacherProfile = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* ДИСЦИПЛИНА */}
                 <div className="space-y-2">
                   <label className="text-[9px] ml-4 text-slate-400 font-black">01. ДИСЦИПЛИНА</label>
                   <select className="w-full bg-slate-50 p-5 rounded-[2rem] font-bold outline-none border-2 border-transparent focus:border-blue-200 appearance-none" value={selSub} onChange={e => {setSelSub(e.target.value); setSelPoolId('');}}>
                     <option value="">ВЫБЕРИТЕ ПРЕДМЕТ...</option>
-                    {courses.map(c => <option key={c.id} value={String(c.id)}>{c.title}</option>)}
+                    {courses.map(c => <option key={`opt-course-${c.id}`} value={String(c.id)}>{c.title}</option>)}
                   </select>
                 </div>
 
-                {/* ГРУППА */}
                 <div className="space-y-2">
                   <label className="text-[9px] ml-4 text-slate-400 font-black">02. ЦЕЛЕВАЯ ГРУППА</label>
                   <select className="w-full bg-slate-50 p-5 rounded-[2rem] font-bold outline-none border-2 border-transparent focus:border-blue-200 appearance-none" value={selGrp} onChange={e => setSelGrp(e.target.value)}>
                     <option value="">ВЫБЕРИТЕ ГРУППУ...</option>
-                    {groups.map(g => <option key={g.id} value={String(g.id)}>{g.name}-{g.course}-{g.number}</option>)}
+                    {groups.map(g => <option key={`opt-group-${g.id}`} value={String(g.id)}>{g.name}-{g.course}-{g.number}</option>)}
                   </select>
                 </div>
 
-                {/* ВЫБОР ПУЛА ВОПРОСОВ */}
                 <div className="col-span-full space-y-2">
                   <label className="text-[9px] ml-4 text-blue-500 font-black">03. БАЗА ВОПРОСОВ (ПОДГОТОВЛЕНО ИИ)</label>
                   <div className="relative">
@@ -193,7 +185,7 @@ export const TeacherProfile = () => {
                     >
                       <option value="">ВЫБЕРИТЕ ПУЛ ВОПРОСОВ...</option>
                       {filteredPools.map(pool => (
-                        <option key={pool.id} value={String(pool.id)}>
+                        <option key={`opt-pool-${pool.id}`} value={String(pool.id)}>
                           ПУЛ #{pool.id} — {pool.docx.replace('.pdf', '')}
                         </option>
                       ))}
@@ -203,7 +195,6 @@ export const TeacherProfile = () => {
                 </div>
               </div>
 
-              {/* НАСТРОЙКА КОЛИЧЕСТВА ВОПРОСОВ */}
               <div className="bg-slate-50 p-8 rounded-[2.5rem] space-y-5 border-2 border-dashed border-slate-200">
                  <div className="flex justify-between items-center font-black italic">
                     <div className="flex items-center gap-2 text-[#1976d2]">
