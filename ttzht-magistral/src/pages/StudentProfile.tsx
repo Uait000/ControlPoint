@@ -40,20 +40,17 @@ export const StudentProfile = () => {
   };
 
   useEffect(() => {
-    // Синхронизация профиля с актуальными данными из таблицы students
     const syncProfile = async () => {
       try {
         const res = await fetch('/test/whoami', { headers });
         if (res.ok) {
           const data = await res.json();
-          
           const updated: UserState = {
             ...user,
-            first_name: data.firstName || user.first_name,
-            second_name: data.secondName || user.second_name,
-            belongs_to: data.belongsTo || user.belongs_to
+            first_name: data.first_name || user.first_name,
+            second_name: data.second_name || user.second_name,
+            belongs_to: data.belongs_to || user.belongs_to
           };
-          
           setUser(updated);
           localStorage.setItem('user_auth', JSON.stringify(updated));
         }
@@ -76,20 +73,13 @@ export const StudentProfile = () => {
     fetchGroups();
   }, []);
 
-  // Загрузка тестов при получении ID группы
   useEffect(() => {
     const fetchMyTests = async () => {
-      if (!user.belongs_to) {
-        setLoadingTests(false);
-        return;
-      }
-
       try {
         const res = await fetch('/tests/available', { headers });
         const data = await res.json();
         if (Array.isArray(data)) {
-          const myTests = data.filter((t: any) => String(t.belongs_to) === String(user.belongs_to));
-          setAssignedTests(myTests);
+          setAssignedTests(data);
         }
       } catch (err) {
         console.error("Error: Tests fetch failed", err);
@@ -122,7 +112,6 @@ export const StudentProfile = () => {
   return (
     <div className="w-full max-w-6xl px-4 space-y-6 sm:space-y-10 flex flex-col items-center text-slate-800 italic uppercase font-black antialiased pb-20">
       
-      {/* КАРТОЧКА ПРОФИЛЯ */}
       <div className="w-full bg-white rounded-[2.5rem] sm:rounded-[4rem] shadow-xl overflow-hidden border border-slate-100 relative">
         <div className="h-24 sm:h-40 bg-[#1976d2] relative overflow-hidden">
           <BookOpen size={180} className="absolute -bottom-10 -left-10 text-white opacity-10 rotate-12" />
@@ -130,7 +119,6 @@ export const StudentProfile = () => {
         
         <div className="px-6 sm:px-12 pb-10 sm:pb-16 relative">
           <div className="flex flex-col md:flex-row items-center md:items-end gap-6 sm:gap-10 -mt-12 sm:-mt-20">
-            
             <div className="relative group shrink-0">
                <div className="w-32 h-32 sm:w-44 sm:h-44 bg-slate-800 rounded-[2rem] sm:rounded-[3rem] border-4 sm:border-[6px] border-white shadow-2xl overflow-hidden">
                   {avatar ? (
@@ -167,7 +155,6 @@ export const StudentProfile = () => {
         </div>
       </div>
 
-      {/* СЕКЦИЯ ТЕСТОВ */}
       <div className="w-full space-y-6">
         <div className="flex items-center gap-4 px-4 sm:px-8">
           <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white rounded-2xl shadow-md flex items-center justify-center text-[#1976d2]">
@@ -186,7 +173,7 @@ export const StudentProfile = () => {
             assignedTests.map((test) => (
               <motion.div 
                 whileHover={{ y: -5 }} 
-                key={test.id} 
+                key={`test-card-${test.id}`} 
                 className="bg-white p-5 sm:p-7 rounded-[2rem] sm:rounded-[2.5rem] border border-slate-100 shadow-lg hover:shadow-2xl transition-all flex flex-col sm:flex-row items-center gap-5 group"
               >
                 <div className="w-16 h-16 sm:w-20 sm:h-20 bg-blue-50 rounded-[1.5rem] flex items-center justify-center text-blue-600 shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
@@ -197,7 +184,7 @@ export const StudentProfile = () => {
                     {test.docx ? test.docx.replace('.pdf', '') : 'ТЕСТ БЕЗ НАЗВАНИЯ'}
                   </h4>
                   <div className="text-[9px] text-slate-500 font-black italic">
-                    СЛОЖНОСТЬ: {test.complexity || 1} • 20 МИНУТ
+                    СЛОЖНОСТЬ: {test.complexity || 1} • {test.question_limit || 15} ВОПРОСОВ
                   </div>
                 </div>
                 <Link 
