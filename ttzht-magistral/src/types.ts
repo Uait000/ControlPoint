@@ -1,6 +1,3 @@
-/**
- * Типы аккаунтов, соответствующие бэкенду на Rust
- */
 export type AccountType = 'Student' | 'Teacher' | 'Admin';
 
 export interface Group {
@@ -24,15 +21,27 @@ export interface AuthResponse {
     user: User;
 }
 
+export interface ApiTest {
+    id: number;
+    docx: string;        
+    docx_name: string;   
+    belongs_to: number;  
+    starts_at: number;   
+    finished: number | null;
+    question_limit: number;
+    assigned_group_id: number | null;
+}
+
 export type QuestionType = 'choice' | 'matching' | 'classification';
 
 export interface Question {
   id: number;
   type: QuestionType;
-  text: string;
-  options?: string[];
+  question: string;     
+  options: string[];    
   complexity: number;
 }
+
 
 export interface Subject {
   id: string;

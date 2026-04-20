@@ -25,9 +25,9 @@ export const StudentProfile = () => {
     return {
       id: parsed.id || 0,
       login: parsed.login || 'guest',
-      first_name: parsed.firstName || parsed.first_name || 'ИМЯ',
-      second_name: parsed.secondName || parsed.second_name || 'ФАМИЛИЯ',
-      belongs_to: parsed.belongsTo || parsed.belongs_to || 0
+      first_name: parsed.first_name || parsed.firstName || 'ИМЯ',
+      second_name: parsed.second_name || parsed.secondName || 'ФАМИЛИЯ',
+      belongs_to: parsed.belongs_to || parsed.belongsTo || 0
     };
   });
 
@@ -78,6 +78,7 @@ export const StudentProfile = () => {
       try {
         const res = await fetch('/tests/available', { headers });
         const data = await res.json();
+        // Сервер уже отфильтровал тесты по группе студента
         if (Array.isArray(data)) {
           setAssignedTests(data);
         }
@@ -181,7 +182,7 @@ export const StudentProfile = () => {
                 </div>
                 <div className="flex-1 text-center sm:text-left overflow-hidden w-full">
                   <h4 className="text-sm sm:text-lg font-black text-slate-900 leading-tight mb-2 break-all uppercase">
-                    {test.docx ? test.docx.replace('.pdf', '') : 'ТЕСТ БЕЗ НАЗВАНИЯ'}
+                    {test.docx_name || 'БЕЗ НАЗВАНИЯ'}
                   </h4>
                   <div className="text-[9px] text-slate-500 font-black italic">
                     СЛОЖНОСТЬ: {test.complexity || 1} • {test.question_limit || 15} ВОПРОСОВ

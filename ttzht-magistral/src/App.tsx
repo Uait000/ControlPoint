@@ -53,7 +53,6 @@ export default function App() {
   // Проверка прав (регистронезависимая)
   const isAdmin = role.toLowerCase() === 'admin' || userLogin === 'admin';
   const isTeacher = role.toLowerCase() === 'teacher';
-  // Если залогинен, но роль не распознана — считаем студентом (безопасный дефолт)
   const isStudent = role.toLowerCase() === 'student' || (!isAdmin && !isTeacher && !!user);
 
   console.log(`[DEBUG] ПРОВЕРКА: Роль в БД="${role}" | Итог: Admin=${isAdmin}, Student=${isStudent}`);
