@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   Plus, Upload, FolderPlus, Trash2, Eye, EyeOff, ChevronDown, FileText, Edit3,
   Cpu, Zap, ShieldCheck, BookOpen, Layout, Code, Atom, Calculator, 
-  FlaskConical, Globe, HardDrive, Terminal, Settings, Database, Activity, RefreshCw
+  FlaskConical, Globe, HardDrive, Terminal, Settings, Database, Activity, RefreshCw, 
+  UserPlus, X 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { Subject, Section, SubSection } from '../types';
+import type { Subject, Section, SubSection, User } from '../types';
 
 const AVAILABLE_ICONS = [
   { name: 'Cpu', Icon: Cpu }, { name: 'Zap', Icon: Zap }, { name: 'ShieldCheck', Icon: ShieldCheck },
@@ -20,6 +21,15 @@ export const AdminPanel = () => {
   const [expandedSubjectId, setExpandedSubjectId] = useState<string | null>(null);
   const [showIconPicker, setShowIconPicker] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [newAdminFirstName, setNewAdminFirstName] = useState(''); 
+  const [newAdminSecondName, setNewAdminSecondName] = useState(''); 
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
+  const [isSystemAdmin, setIsSystemAdmin] = useState(true);
 
   const getHeaders = (isJson = true) => {
     const h: any = {
@@ -29,7 +39,6 @@ export const AdminPanel = () => {
     return h;
   };
 
-  // Загрузка 
   const fetchSubjects = async () => {
     try {
       const res = await fetch('/storage/courses', { headers: getHeaders() });
@@ -44,7 +53,6 @@ export const AdminPanel = () => {
 
   useEffect(() => { fetchSubjects(); }, []);
 
-  // Сохранение 
   const syncWithServer = async (subject: Subject) => {
     setIsSyncing(true);
     try {
@@ -61,7 +69,6 @@ export const AdminPanel = () => {
     }
   };
 
-  // Создание предмета 
   const addSubject = async () => {
     const newSubData = { 
         id: "0", 
@@ -90,9 +97,8 @@ export const AdminPanel = () => {
     }
   };
 
-  // Удаление 
   const deleteSubject = async (id: string) => {
-    if (!window.confirm("УДАЛИТЬ ПРЕДМЕТ?")) return;
+    if (!window.confirm("УДАЛИТЬ ВЕСЬ ПРЕДМЕТ СО ВСЕМИ ДАННЫМИ?")) return;
     try {
       const res = await fetch(`/storage/courses/${id}`, {
         method: 'DELETE',
@@ -104,7 +110,47 @@ export const AdminPanel = () => {
     }
   };
 
-  //Загрузка PDF 
+  //  УДАЛЕНИЯ РАЗДЕЛА 
+  const deleteSection = (subjectId: string, sectionId: string) => {
+    if (!window.confirm("УДАЛИТЬ ЭТОТ РАЗДЕЛ?")) return;
+    const subject = subjects.find(s => s.id === subjectId);
+    if (!subject) return;
+
+    const updatedSubject = {
+        ...subject,
+        sections: subject.sections.filter(sec => sec.id !== sectionId)
+    };
+
+    setSubjects(subjects.map(s => s.id === subjectId ? updatedSubject : s));
+    syncWithServer(updatedSubject);
+  };
+
+  // УДАЛЕНИЯ ЛЕКЦИИ (ФАЙЛА)
+  const deleteLecture = (subjectId: string, sectionId: string, subId: string, lectureId: string) => {
+    const subject = subjects.find(s => s.id === subjectId);
+    if (!subject) return;
+
+    const updatedSubject = {
+        ...subject,
+        sections: subject.sections.map(sec => {
+            if (sec.id !== sectionId) return sec;
+            return {
+                ...sec,
+                subSections: sec.subSections.map(sub => {
+                    if (sub.id !== subId) return sub;
+                    return {
+                        ...sub,
+                        lectures: sub.lectures.filter(l => l.id !== lectureId)
+                    };
+                })
+            };
+        })
+    };
+
+    setSubjects(subjects.map(s => s.id === subjectId ? updatedSubject : s));
+    syncWithServer(updatedSubject);
+  };
+
   const handleFileUpload = async (subjectId: string, sectionId: string, subId: string, file: File, replaceId?: string) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -152,8 +198,52 @@ export const AdminPanel = () => {
     }
   };
 
+  const handleCreateAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAdminEmail || !newAdminPassword || !newAdminFirstName || !newAdminSecondName) {
+        return alert("Заполните все поля");
+    }
+    
+    setIsCreatingAdmin(true);
+    try {
+        const res = await fetch('/auth/register-admin', {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ 
+                email: newAdminEmail, 
+                password: newAdminPassword,
+                first_name: newAdminFirstName,
+                second_name: newAdminSecondName
+            })
+        });
+
+        if (res.ok) {
+            alert("АДМИНИСТРАТОР УСПЕШНО СОЗДАН!");
+            setNewAdminEmail('');
+            setNewAdminPassword('');
+            setNewAdminFirstName('');
+            setNewAdminSecondName('');
+            setShowAdminModal(false);
+        } else {
+            const errorData = await res.json().catch(() => null);
+            if (res.status === 403) {
+                alert("ОШИБКА ДОСТУПА: Только Системный Администратор может создавать новых админов.");
+                setIsSystemAdmin(false);
+                setShowAdminModal(false);
+            } else {
+                alert(`ОШИБКА: ${errorData?.message || 'Не удалось создать администратора'}`);
+            }
+        }
+    } catch (e) {
+        alert("ОШИБКА СЕТИ");
+    } finally {
+        setIsCreatingAdmin(false);
+    }
+  };
+
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6 md:space-y-10 font-black italic uppercase p-4 md:p-8 animate-in fade-in duration-500">
+    <div className="w-full max-w-5xl mx-auto space-y-6 md:space-y-10 font-black italic uppercase p-4 md:p-8 animate-in fade-in duration-500 text-slate-700">
+      
       <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-6 md:p-8 rounded-3xl md:rounded-[2.5rem] shadow-sm border border-blue-50 gap-4">
         <div className="text-center sm:text-left">
           <h2 className="text-2xl md:text-3xl text-[#1565c0] tracking-tighter leading-none">ПАНЕЛЬ УПРАВЛЕНИЯ</h2>
@@ -161,9 +251,19 @@ export const AdminPanel = () => {
             {isSyncing ? 'СОХРАНЕНИЕ В БД...' : 'МЕНЕДЖЕР КУРСОВ ТТЖТ'}
           </p>
         </div>
-        <button onClick={addSubject} className="w-full sm:w-auto bg-[#1976d2] text-white px-8 py-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg active:scale-95 transition-all text-xs">
-          <Plus size={22}/> СОЗДАТЬ ПРЕДМЕТ
-        </button>
+        <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 w-full sm:w-auto">
+            {isSystemAdmin && (
+              <button 
+                  onClick={() => setShowAdminModal(true)} 
+                  className="w-full sm:w-auto bg-slate-100 text-slate-600 px-6 py-4 rounded-2xl flex items-center justify-center gap-3 shadow-sm hover:bg-slate-200 active:scale-95 transition-all text-xs border border-slate-200"
+              >
+                  <UserPlus size={22}/> НОВЫЙ АДМИН
+              </button>
+            )}
+            <button onClick={addSubject} className="w-full sm:w-auto bg-[#1976d2] text-white px-8 py-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg active:scale-95 transition-all text-xs border-b-4 border-blue-800">
+                <Plus size={22}/> СОЗДАТЬ ПРЕДМЕТ
+            </button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:gap-8">
@@ -184,7 +284,16 @@ export const AdminPanel = () => {
                    />
                 </div>
               </div>
-              <ChevronDown size={24} className={`text-slate-200 transition-transform ${expandedSubjectId === subject.id ? 'rotate-180' : ''}`} />
+              <div className="flex items-center gap-4">
+                <button 
+                    onClick={(e) => { e.stopPropagation(); deleteSubject(subject.id); }}
+                    className="p-3 text-red-400 hover:text-red-600 transition-colors"
+                    title="УДАЛИТЬ ПРЕДМЕТ"
+                >
+                    <Trash2 size={24} />
+                </button>
+                <ChevronDown size={24} className={`text-slate-200 transition-transform ${expandedSubjectId === subject.id ? 'rotate-180' : ''}`} />
+              </div>
             </div>
 
             <AnimatePresence>
@@ -210,11 +319,16 @@ export const AdminPanel = () => {
                                 onBlur={() => syncWithServer(subject)}
                                />
                             </div>
-                            <button onClick={() => {
-                                const updated = {...subject, sections: subject.sections.map(sec => sec.id === section.id ? {...sec, subSections: [...sec.subSections, { id: Date.now().toString(), title: 'НОВЫЙ ПУНКТ', time: '20 МИН', status: 'active', lectures: [] }]} : sec)};
-                                setSubjects(subjects.map(s => s.id === subject.id ? updated : s));
-                                syncWithServer(updated);
-                            }} className="text-blue-500 bg-blue-50 px-3 py-1.5 rounded-lg text-[8px] font-black">+ ПУНКТ</button>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => deleteSection(subject.id, section.id)} className="p-2 text-red-300 hover:text-red-500 transition-colors">
+                                    <Trash2 size={16} />
+                                </button>
+                                <button onClick={() => {
+                                    const updated = {...subject, sections: subject.sections.map(sec => sec.id === section.id ? {...sec, subSections: [...sec.subSections, { id: Date.now().toString(), title: 'НОВЫЙ ПУНКТ', time: '20 МИН', status: 'active', lectures: [] }]} : sec)};
+                                    setSubjects(subjects.map(s => s.id === subject.id ? updated : s));
+                                    syncWithServer(updated);
+                                }} className="text-blue-500 bg-blue-50 px-3 py-1.5 rounded-lg text-[8px] font-black">+ ПУНКТ</button>
+                            </div>
                           </div>
 
                           <div className="grid gap-3 md:ml-8">
@@ -228,8 +342,14 @@ export const AdminPanel = () => {
                                 />
                                 <div className="flex flex-wrap items-center gap-2">
                                   {sub.lectures.map(l => (
-                                    <div key={l.id} className="flex items-center gap-2 bg-green-50 text-green-700 text-[8px] px-2 py-1 rounded-lg border border-green-100 font-black">
+                                    <div key={l.id} className="group flex items-center gap-2 bg-green-50 text-green-700 text-[8px] px-2 py-1 rounded-lg border border-green-100 font-black">
                                       <FileText size={10}/> {l.title}
+                                      <button 
+                                        onClick={() => deleteLecture(subject.id, section.id, sub.id, l.id)}
+                                        className="ml-1 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"
+                                      >
+                                        <X size={12}/>
+                                      </button>
                                     </div>
                                   ))}
                                   <label className="cursor-pointer bg-white text-[#1976d2] border-2 border-[#1976d2] px-3 py-2 rounded-xl text-[9px] flex items-center gap-2 hover:bg-[#1976d2] hover:text-white transition-all font-black italic shadow-sm active:scale-95">
@@ -253,6 +373,85 @@ export const AdminPanel = () => {
           </div>
         ))}
       </div>
+
+      <AnimatePresence>
+        {showAdminModal && (
+          <div className="fixed inset-0 z-[1000] bg-slate-900/80 backdrop-blur-xl flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-lg rounded-[3rem] p-10 shadow-2xl space-y-6 border-8 border-white/50 relative">
+              <button onClick={() => setShowAdminModal(false)} className="absolute top-6 right-6 p-3 bg-slate-100 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-full transition-all"><X size={24}/></button>
+              
+              <div className="text-center space-y-2 pb-4">
+                 <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <ShieldCheck size={32} />
+                 </div>
+                 <h3 className="text-2xl font-black text-blue-800 italic tracking-tighter uppercase leading-none">СИСТЕМНЫЙ ДОСТУП</h3>
+                 <p className="text-[10px] text-slate-400 font-black tracking-widest uppercase">РЕГИСТРАЦИЯ НОВОГО АДМИНИСТРАТОРА</p>
+              </div>
+
+              <form onSubmit={handleCreateAdmin} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                          <label className="text-[9px] text-slate-400 font-black tracking-widest ml-2">ИМЯ</label>
+                          <input 
+                              type="text" required value={newAdminFirstName}
+                              onChange={(e) => setNewAdminFirstName(e.target.value)}
+                              className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-5 py-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:bg-white transition-all uppercase"
+                              placeholder="НАТАЛЬЯ"
+                          />
+                      </div>
+                      <div className="space-y-2">
+                          <label className="text-[9px] text-slate-400 font-black tracking-widest ml-2">ФАМИЛИЯ</label>
+                          <input 
+                              type="text" required value={newAdminSecondName}
+                              onChange={(e) => setNewAdminSecondName(e.target.value)}
+                              className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-5 py-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:bg-white transition-all uppercase"
+                              placeholder="ИСАЕНКО"
+                          />
+                      </div>
+                  </div>
+
+                  <div className="space-y-2">
+                      <label className="text-[9px] text-slate-400 font-black tracking-widest ml-2">EMAIL (ЛОГИН)</label>
+                      <input 
+                          type="email" required value={newAdminEmail}
+                          onChange={(e) => setNewAdminEmail(e.target.value)}
+                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-5 py-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:bg-white transition-all lowercase"
+                          placeholder="admin@ttzht.ru"
+                      />
+                  </div>
+
+                  <div className="space-y-2">
+                      <label className="text-[9px] text-slate-400 font-black tracking-widest ml-2">ПАРОЛЬ (МИН. 8 СИМВОЛОВ)</label>
+                      <div className="relative">
+                          <input 
+                              type={showAdminPassword ? "text" : "password"}
+                              required minLength={8} value={newAdminPassword}
+                              onChange={(e) => setNewAdminPassword(e.target.value)}
+                              className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl pl-5 pr-12 py-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:bg-white transition-all"
+                              placeholder="********"
+                          />
+                          <button 
+                              type="button" 
+                              onClick={() => setShowAdminPassword(!showAdminPassword)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-500 transition-colors"
+                          >
+                              {showAdminPassword ? <EyeOff size={18}/> : <Eye size={18}/>}
+                          </button>
+                      </div>
+                  </div>
+
+                  <button 
+                      type="submit" 
+                      disabled={isCreatingAdmin}
+                      className={`w-full mt-4 py-4 rounded-xl font-black text-sm transition-all shadow-lg border-b-4 ${isCreatingAdmin ? 'bg-slate-300 border-slate-400 text-slate-100' : 'bg-green-50 border-green-700 text-white hover:bg-green-600 active:scale-95'}`}
+                  >
+                      {isCreatingAdmin ? 'СОЗДАНИЕ...' : 'ЗАРЕГИСТРИРОВАТЬ АДМИНА'}
+                  </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

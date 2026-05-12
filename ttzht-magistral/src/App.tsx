@@ -22,7 +22,6 @@ export default function App() {
     if (saved) {
       try { 
         const parsed = JSON.parse(saved);
-        console.log("[DEBUG] ОБЪЕКТ ИЗ ПАМЯТИ:", parsed);
         setUser(parsed); 
       } catch (e) { 
         localStorage.removeItem('user_auth'); 
@@ -39,23 +38,27 @@ export default function App() {
     setTimeout(() => setNotification(null), 3000);
   };
 
+  const handleLogout = () => {
+    localStorage.clear();
+    setUser(null);
+    window.location.href = '/';
+  };
+
   if (loading) return null;
 
   const getRole = () => {
     if (!user) return "";
+    // Поддержка разных форматов именования полей из БД
     const rawRole = (user as any).accountType || (user as any).account_type || "";
-    return rawRole.toString();
+    return rawRole.toString().toLowerCase();
   };
 
   const role = getRole();
   const userLogin = (user?.login || "").toLowerCase();
 
-  // Проверка прав (регистронезависимая)
-  const isAdmin = role.toLowerCase() === 'admin' || userLogin === 'admin';
-  const isTeacher = role.toLowerCase() === 'teacher';
-  const isStudent = role.toLowerCase() === 'student' || (!isAdmin && !isTeacher && !!user);
-
-  console.log(`[DEBUG] ПРОВЕРКА: Роль в БД="${role}" | Итог: Admin=${isAdmin}, Student=${isStudent}`);
+  const isAdmin = role === 'admin' || userLogin === 'admin';
+  const isTeacher = role === 'teacher';
+  const isStudent = role === 'student' || (!isAdmin && !isTeacher && !!user);
 
   const getProfilePath = () => {
     if (isAdmin) return "/admin";
@@ -88,17 +91,26 @@ export default function App() {
             <nav className="w-full bg-white/90 backdrop-blur-xl border-b-2 border-[#e1eefb] sticky top-0 z-[500]">
               <div className="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">
                 <Link to="/" className="flex items-center gap-3">
-                  <div className="bg-[#1976d2] p-2 rounded-xl shadow-lg"><Zap className="text-white" size={24} /></div>
+                  <div className="bg-[#1976d2] p-2 rounded-xl shadow-lg">
+                    <Zap className="text-white" size={24} />
+                  </div>
                   <span className="text-xl tracking-tighter text-[#1565c0]">МАГИСТРАЛЬ</span>
                 </Link>
 
                 <div className="flex items-center gap-2 sm:gap-4">
                   <NavLink to="/" icon={<LayoutGrid size={18}/>} label="ПРЕДМЕТЫ" />
-                  {isAdmin && <NavLink to="/admin" icon={<Settings size={18}/>} label="АДМИНКА" />}
+                  
+                  {/* Кнопка админки видна только админам */}
+                  {isAdmin && (
+                    <NavLink to="/admin" icon={<Settings size={18}/>} label="АДМИНКА" />
+                  )}
+
                   <NavLink to={getProfilePath()} icon={<UserIcon size={18}/>} label="ПРОФИЛЬ" />
+                  
                   <button 
-                    onClick={() => { localStorage.clear(); window.location.href = '/'; }} 
+                    onClick={handleLogout} 
                     className="text-red-500 hover:bg-red-50 p-2 rounded-xl transition-all"
+                    title="ВЫЙТИ"
                   >
                     <LogOut size={18}/>
                   </button>
@@ -110,15 +122,24 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<MainPage />} />
                 
-                {/* Маршруты с защитой и редиректом при ошибке прав */}
-                <Route path="/admin" element={isAdmin ? <AdminPanel /> : <Navigate to={getProfilePath()} />} />
-                <Route path="/teacher" element={isTeacher ? <TeacherProfile /> : <Navigate to={getProfilePath()} />} />
-                <Route path="/student" element={isStudent ? <StudentProfile /> : <Navigate to={getProfilePath()} />} />
+                {/* Защищенные маршруты */}
+                <Route 
+                  path="/admin" 
+                  element={isAdmin ? <AdminPanel /> : <Navigate to={getProfilePath()} />} 
+                />
+                <Route 
+                  path="/teacher" 
+                  element={isTeacher ? <TeacherProfile /> : <Navigate to={getProfilePath()} />} 
+                />
+                <Route 
+                  path="/student" 
+                  element={isStudent ? <StudentProfile /> : <Navigate to={getProfilePath()} />} 
+                />
                 
                 <Route path="/subject/:id" element={<SubjectSectionsPage />} />
                 <Route path="/test/:id" element={<TestPage />} />
                 
-                {/* Если зашли не туда — кидаем на главную */}
+                {/* Редирект для всех остальных путей */}
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             </main>
@@ -131,7 +152,10 @@ export default function App() {
 
 function NavLink({ to, icon, label }: any) {
   return (
-    <Link to={to} className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-slate-500 hover:text-[#1976d2] transition-all font-black text-[10px] border-2 border-transparent hover:border-blue-100 uppercase italic">
+    <Link 
+      to={to} 
+      className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-slate-500 hover:text-[#1976d2] transition-all font-black text-[10px] border-2 border-transparent hover:border-blue-100 uppercase italic"
+    >
       {icon} <span className="hidden sm:inline">{label}</span>
     </Link>
   );

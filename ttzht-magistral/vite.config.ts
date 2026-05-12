@@ -13,21 +13,23 @@ export default defineConfig({
         rewriteWsOrigin: true,
       },
 
-      //ПРОКСИ ДЛЯ ТЕСТОВ
-      // Ловим только API-запросы: /test/start, /test/submit и т.д.
+      // ПРОКСИ ДЛЯ ТЕСТОВ
       '^/test/(start|submit|finish|violate|reset|whoami|ai_question|modify)': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
         secure: false,
       },
 
-      //СТАНДАРТНЫЕ СИСТЕМНЫЕ ПУТИ
+      // СТАНДАРТНЫЕ СИСТЕМНЫЕ ПУТИ
       '/auth': 'http://127.0.0.1:8000',
       '/groups': 'http://127.0.0.1:8000',
       '/tests': 'http://127.0.0.1:8000',
       '/questions': 'http://127.0.0.1:8000',
-      // Пути для создания групп /group/create и т.д.
       '/group': 'http://127.0.0.1:8000',
+      
+      '/export': 'http://127.0.0.1:8000',    // Для экспорта отчетов (HTML/PDF)
+      '/escalate': 'http://127.0.0.1:8000',  // Для эскалации курсов в админке
+
 
       // ХРАНИЛИЩЕ И ФАЙЛЫ
       '/storage': {
