@@ -218,15 +218,27 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onAuthSucces
                     </div>
                 )}
 
-                {/* ВВОД КОДА И НОВОГО ПАРОЛЯ/}
-                {mode === 'forgot_code' && (
-                    <div className="space-y-4">
-                        <AuthInput label="КОД ИЗ ПИСЬМА (6 ЦИФР)" type="text" icon={<KeyRound size={18}/>} value={formData.resetCode} onChange={(v:any) => setFormData({...formData, resetCode: v})} />
-                        <AuthInput label="НОВЫЙ ПАРОЛЬ" type="password" icon={<Lock size={18}/>} value={formData.newPassword} onChange={(v:any) => setFormData({...formData, newPassword: v})} />
-                    </div>
-                )}
+{/* ВВОД КОДА И НОВОГО ПАРОЛЯ */}
+{mode === 'forgot_code' && (
+    <div className="space-y-4">
+        <AuthInput 
+          label="КОД ИЗ ПИСЬМА (6 ЦИФР)" 
+          type="text" 
+          icon={<KeyRound size={18}/>} 
+          value={formData.resetCode} 
+          onChange={(v: any) => setFormData({...formData, resetCode: v})} 
+        />
+        <AuthInput 
+          label="НОВЫЙ ПАРОЛЬ" 
+          type="password" 
+          icon={<Lock size={18}/>} 
+          value={formData.newPassword} 
+          onChange={(v: any) => setFormData({...formData, newPassword: v})} 
+        />
+    </div>
+)}
 
-                {/* КНОПКА ОТПРАВКИ */}
+{/* КНОПКА ОТПРАВКИ */}
                 <button type="submit" className={`w-full py-4 rounded-2xl shadow-xl flex items-center justify-center gap-3 mt-8 active:scale-95 transition-all text-sm font-black italic uppercase ${formData.account_type === 'Admin' && mode === 'login' ? 'bg-yellow-500 text-white' : 'bg-[#1976d2] text-white'}`}>
                   {mode === 'login' ? 'ВОЙТИ' : 
                    mode === 'register' ? 'ЗАРЕГИСТРИРОВАТЬСЯ' : 
