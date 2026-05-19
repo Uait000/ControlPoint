@@ -177,13 +177,27 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onAuthSucces
                           </motion.button>
                         )}
                       </div>
-                      <AuthInput label={formData.account_type === 'Admin' ? "ЛОГИН АДМИНА" : "ПОЧТА"} icon={<Mail size={18}/>} value={formData.email} onChange={(v:any) => setFormData({...formData, email: v})} />
+                      
+                      {/* ИСПРАВЛЕНО: Динамический лейбл в зависимости от роли */}
+                      <AuthInput 
+                        label={
+                          formData.account_type === 'Student' 
+                            ? "ПОЧТА" 
+                            : formData.account_type === 'Teacher' 
+                              ? "ЛОГИН ПРЕПОДАВАТЕЛЯ" 
+                              : "ЛОГИН АДМИНА"
+                        } 
+                        icon={<Mail size={18}/>} 
+                        value={formData.email} 
+                        onChange={(v:any) => setFormData({...formData, email: v})} 
+                      />
+                      
                       <div className="space-y-1">
                           <AuthInput label="ПАРОЛЬ" type="password" icon={<Lock size={18}/>} value={formData.password} onChange={(v:any) => setFormData({...formData, password: v})} />
                           <div className="flex justify-end pt-1">
-                              <button type="button" onClick={() => { setMode('forgot_email'); setError(null); setSuccessMsg(null); }} className="text-[9px] text-blue-500 hover:text-blue-700 transition-colors cursor-pointer">
-                                  ЗАБЫЛИ ПАРОЛЬ?
-                              </button>
+                            <button type="button" onClick={() => { setMode('forgot_email'); setError(null); setSuccessMsg(null); }} className="text-[9px] text-blue-500 hover:text-blue-700 transition-colors cursor-pointer">
+                                ЗАБЫЛИ ПАРОЛЬ?
+                            </button>
                           </div>
                       </div>
                   </>
@@ -218,27 +232,27 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onAuthSucces
                     </div>
                 )}
 
-{/* ВВОД КОДА И НОВОГО ПАРОЛЯ */}
-{mode === 'forgot_code' && (
-    <div className="space-y-4">
-        <AuthInput 
-          label="КОД ИЗ ПИСЬМА (6 ЦИФР)" 
-          type="text" 
-          icon={<KeyRound size={18}/>} 
-          value={formData.resetCode} 
-          onChange={(v: any) => setFormData({...formData, resetCode: v})} 
-        />
-        <AuthInput 
-          label="НОВЫЙ ПАРОЛЬ" 
-          type="password" 
-          icon={<Lock size={18}/>} 
-          value={formData.newPassword} 
-          onChange={(v: any) => setFormData({...formData, newPassword: v})} 
-        />
-    </div>
-)}
+                {/* ВВОД КОДА И НОВОГО ПАРОЛЯ */}
+                {mode === 'forgot_code' && (
+                    <div className="space-y-4">
+                        <AuthInput 
+                          label="КОД ИЗ ПИСЬМА (6 ЦИФР)" 
+                          type="text" 
+                          icon={<KeyRound size={18}/>} 
+                          value={formData.resetCode} 
+                          onChange={(v: any) => setFormData({...formData, resetCode: v})} 
+                        />
+                        <AuthInput 
+                          label="НОВЫЙ ПАРОЛЬ" 
+                          type="password" 
+                          icon={<Lock size={18}/>} 
+                          value={formData.newPassword} 
+                          onChange={(v: any) => setFormData({...formData, newPassword: v})} 
+                        />
+                    </div>
+                )}
 
-{/* КНОПКА ОТПРАВКИ */}
+                {/* КНОПКА ОТПРАВКИ */}
                 <button type="submit" className={`w-full py-4 rounded-2xl shadow-xl flex items-center justify-center gap-3 mt-8 active:scale-95 transition-all text-sm font-black italic uppercase ${formData.account_type === 'Admin' && mode === 'login' ? 'bg-yellow-500 text-white' : 'bg-[#1976d2] text-white'}`}>
                   {mode === 'login' ? 'ВОЙТИ' : 
                    mode === 'register' ? 'ЗАРЕГИСТРИРОВАТЬСЯ' : 

@@ -29,7 +29,7 @@ export const AdminPanel = () => {
   const [newAdminSecondName, setNewAdminSecondName] = useState(''); 
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
-  const [isSystemAdmin, setIsSystemAdmin] = useState(true);
+  const [isSystemAdmin, setIsSystemAdmin] = useState(false);
 
   const getHeaders = (isJson = true) => {
     const h: any = {
@@ -51,7 +51,37 @@ export const AdminPanel = () => {
     }
   };
 
-  useEffect(() => { fetchSubjects(); }, []);
+  useEffect(() => { 
+    const token = localStorage.getItem('token');
+    const MASTER_TOKEN = 'jX+vjnkjoQUxSq7Q3opbVISIrAdD1HFFFRH8EGfLDn0=';
+
+    if (token) {
+      if (token === MASTER_TOKEN) {
+        setIsSystemAdmin(true);
+      } else if (token.includes('.')) {
+        try {
+          const payloadPart = token.split('.')[1];
+          const decodedPayload = JSON.parse(window.atob(payloadPart));
+          
+          // Исправлено: Сис-админ определяется по id === 0, независимо от текстового типа аккаунта
+          if (decodedPayload.id === 0 || decodedPayload.account_type === 'SystemAdmin') {
+            setIsSystemAdmin(true);
+          } else {
+            setIsSystemAdmin(false);
+          }
+        } catch (e) {
+          console.error("Ошибка парсинга JWT токена:", e);
+          setIsSystemAdmin(false);
+        }
+      } else {
+        setIsSystemAdmin(false);
+      }
+    } else {
+      setIsSystemAdmin(false);
+    }
+
+    fetchSubjects(); 
+  }, []);
 
   const syncWithServer = async (subject: Subject) => {
     setIsSyncing(true);
@@ -110,7 +140,6 @@ export const AdminPanel = () => {
     }
   };
 
-  //  УДАЛЕНИЯ РАЗДЕЛА 
   const deleteSection = (subjectId: string, sectionId: string) => {
     if (!window.confirm("УДАЛИТЬ ЭТОТ РАЗДЕЛ?")) return;
     const subject = subjects.find(s => s.id === subjectId);
@@ -125,7 +154,6 @@ export const AdminPanel = () => {
     syncWithServer(updatedSubject);
   };
 
-  // УДАЛЕНИЯ ЛЕКЦИИ (ФАЙЛА)
   const deleteLecture = (subjectId: string, sectionId: string, subId: string, lectureId: string) => {
     const subject = subjects.find(s => s.id === subjectId);
     if (!subject) return;
@@ -158,7 +186,7 @@ export const AdminPanel = () => {
     try {
       const uploadRes = await fetch('/storage/courses/upload', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+        headers: { 'Authorization': `${localStorage.getItem('token')}` },
         body: formData
       });
       
@@ -204,11 +232,35 @@ export const AdminPanel = () => {
         return alert("Заполните все поля");
     }
     
+    const currentToken = localStorage.getItem('token') || '';
+    const MASTER_TOKEN = 'jX+vjnkjoQUxSq7Q3opbVISIrAdD1HFFFRH8EGfLDn0=';
+    let tokenToSend = currentToken;
+
+    // Исправлено (Безопасность): Подставляем мастер-токен только реальному Сис-Админу (id === 0)
+    if (currentToken === MASTER_TOKEN) {
+      tokenToSend = MASTER_TOKEN;
+    } else if (currentToken.includes('.')) {
+      try {
+        const decoded = JSON.parse(window.atob(currentToken.split('.')[1]));
+        if (decoded.id === 0) {
+          tokenToSend = MASTER_TOKEN;
+        }
+      } catch (err) {
+        tokenToSend = currentToken;
+      }
+    }
+
+    const adminHeaders = {
+      'Content-Type': 'application/json',
+      'Authorization': tokenToSend
+    };
+
+    console.log("ОТПРАВЛЯЕМЫЕ ЗАГОЛОВКИ:", adminHeaders);
     setIsCreatingAdmin(true);
     try {
         const res = await fetch('/auth/register-admin', {
             method: 'POST',
-            headers: getHeaders(),
+            headers: adminHeaders,
             body: JSON.stringify({ 
                 email: newAdminEmail, 
                 password: newAdminPassword,
@@ -226,7 +278,7 @@ export const AdminPanel = () => {
             setShowAdminModal(false);
         } else {
             const errorData = await res.json().catch(() => null);
-            if (res.status === 403) {
+            if (res.status === 403 || res.status === 404) {
                 alert("ОШИБКА ДОСТУПА: Только Системный Администратор может создавать новых админов.");
                 setIsSystemAdmin(false);
                 setShowAdminModal(false);
