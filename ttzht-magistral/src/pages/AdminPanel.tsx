@@ -63,7 +63,6 @@ export const AdminPanel = () => {
           const payloadPart = token.split('.')[1];
           const decodedPayload = JSON.parse(window.atob(payloadPart));
           
-          // Исправлено: Сис-админ определяется по id === 0, независимо от текстового типа аккаунта
           if (decodedPayload.id === 0 || decodedPayload.account_type === 'SystemAdmin') {
             setIsSystemAdmin(true);
           } else {
@@ -184,9 +183,10 @@ export const AdminPanel = () => {
     formData.append('file', file);
 
     try {
+      // ИСПРАВЛЕНО: Вместо ручной сборки используем getHeaders(false), чтобы прописать Bearer и не сломать FormData
       const uploadRes = await fetch('/storage/courses/upload', {
         method: 'POST',
-        headers: { 'Authorization': `${localStorage.getItem('token')}` },
+        headers: getHeaders(false),
         body: formData
       });
       
@@ -236,7 +236,6 @@ export const AdminPanel = () => {
     const MASTER_TOKEN = 'jX+vjnkjoQUxSq7Q3opbVISIrAdD1HFFFRH8EGfLDn0=';
     let tokenToSend = currentToken;
 
-    // Исправлено (Безопасность): Подставляем мастер-токен только реальному Сис-Админу (id === 0)
     if (currentToken === MASTER_TOKEN) {
       tokenToSend = MASTER_TOKEN;
     } else if (currentToken.includes('.')) {

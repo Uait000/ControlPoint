@@ -78,7 +78,9 @@ export const StudentProfile = () => {
       try {
         const res = await fetch('/tests/available', { headers });
         const data = await res.json();
-        // Сервер уже отфильтровал тесты по группе студента
+        
+        console.log("СТРУКТУРА ТЕСТОВ С БЭКЕНДА:", data);
+        
         if (Array.isArray(data)) {
           setAssignedTests(data);
         }
@@ -171,31 +173,37 @@ export const StudentProfile = () => {
                <span className="text-xs">ЗАГРУЗКА ЗАДАНИЙ...</span>
             </div>
           ) : assignedTests.length > 0 ? (
-            assignedTests.map((test) => (
-              <motion.div 
-                whileHover={{ y: -5 }} 
-                key={`test-card-${test.id}`} 
-                className="bg-white p-5 sm:p-7 rounded-[2rem] sm:rounded-[2.5rem] border border-slate-100 shadow-lg hover:shadow-2xl transition-all flex flex-col sm:flex-row items-center gap-5 group"
-              >
-                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-blue-50 rounded-[1.5rem] flex items-center justify-center text-blue-600 shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                  <FileText size={32} />
-                </div>
-                <div className="flex-1 text-center sm:text-left overflow-hidden w-full">
-                  <h4 className="text-sm sm:text-lg font-black text-slate-900 leading-tight mb-2 break-all uppercase">
-                    {test.docx_name || 'БЕЗ НАЗВАНИЯ'}
-                  </h4>
-                  <div className="text-[9px] text-slate-500 font-black italic">
-                    СЛОЖНОСТЬ: {test.complexity || 1} • {test.question_limit || 15} ВОПРОСОВ
-                  </div>
-                </div>
-                <Link 
-                  to={`/test/${test.id}`} 
-                  className="w-full sm:w-auto bg-[#1976d2] text-white px-8 py-4 rounded-xl font-black text-[10px] shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+            assignedTests.map((test) => {
+              // ИСПРАВЛЕНО: Мапим переменные в соответствии с реальным логом из консоли DevTools
+              const title = test.docxName || 'БЕЗ НАЗВАНИЯ';
+              const limit = test.questionLimit || 0;
+
+              return (
+                <motion.div 
+                  whileHover={{ y: -5 }} 
+                  key={`test-card-${test.id}`} 
+                  className="bg-white p-5 sm:p-7 rounded-[2rem] sm:rounded-[2.5rem] border border-slate-100 shadow-lg hover:shadow-2xl transition-all flex flex-col sm:flex-row items-center gap-5 group"
                 >
-                  СТАРТ <ChevronRight size={16} />
-                </Link>
-              </motion.div>
-            ))
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 bg-blue-50 rounded-[1.5rem] flex items-center justify-center text-blue-600 shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                    <FileText size={32} />
+                  </div>
+                  <div className="flex-1 text-center sm:text-left overflow-hidden w-full">
+                    <h4 className="text-sm sm:text-lg font-black text-slate-900 leading-tight mb-2 break-all uppercase">
+                      {title}
+                    </h4>
+                    <div className="text-[9px] text-slate-500 font-black italic">
+                      {limit} ВОПРОСОВ
+                    </div>
+                  </div>
+                  <Link 
+                    to={`/test/${test.id}`} 
+                    className="w-full sm:w-auto bg-[#1976d2] text-white px-8 py-4 rounded-xl font-black text-[10px] shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+                  >
+                    СТАРТ <ChevronRight size={16} />
+                  </Link>
+                </motion.div>
+              );
+            })
           ) : (
             <div className="col-span-full py-16 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-100 flex flex-col items-center gap-4">
                <AlertCircle size={48} className="text-slate-200" />
