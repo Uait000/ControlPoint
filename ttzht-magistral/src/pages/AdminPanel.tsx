@@ -6,7 +6,7 @@ import {
   UserPlus, X 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { Subject, Section, SubSection, User } from '../types';
+import type { Subject } from '../types';
 
 const AVAILABLE_ICONS = [
   { name: 'Cpu', Icon: Cpu }, { name: 'Zap', Icon: Zap }, { name: 'ShieldCheck', Icon: ShieldCheck },
@@ -30,6 +30,9 @@ export const AdminPanel = () => {
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
   const [isSystemAdmin, setIsSystemAdmin] = useState(false);
+  
+  // Новое состояние для динамического мастер-ключа (защита от утечки)
+  const [masterKey, setMasterKey] = useState('');
 
   const getHeaders = (isJson = true) => {
     const h: any = {
@@ -53,12 +56,9 @@ export const AdminPanel = () => {
 
   useEffect(() => { 
     const token = localStorage.getItem('token');
-    const MASTER_TOKEN = 'jX+vjnkjoQUxSq7Q3opbVISIrAdD1HFFFRH8EGfLDn0=';
 
     if (token) {
-      if (token === MASTER_TOKEN) {
-        setIsSystemAdmin(true);
-      } else if (token.includes('.')) {
+      if (token.includes('.')) {
         try {
           const payloadPart = token.split('.')[1];
           const decodedPayload = JSON.parse(window.atob(payloadPart));
@@ -73,7 +73,8 @@ export const AdminPanel = () => {
           setIsSystemAdmin(false);
         }
       } else {
-        setIsSystemAdmin(false);
+        // Если в локальном хранилище находится сырой токен авторизации сисадмина
+        setIsSystemAdmin(true);
       }
     } else {
       setIsSystemAdmin(false);
@@ -183,7 +184,6 @@ export const AdminPanel = () => {
     formData.append('file', file);
 
     try {
-      // ИСПРАВЛЕНО: Вместо ручной сборки используем getHeaders(false), чтобы прописать Bearer и не сломать FormData
       const uploadRes = await fetch('/storage/courses/upload', {
         method: 'POST',
         headers: getHeaders(false),
@@ -228,30 +228,14 @@ export const AdminPanel = () => {
 
   const handleCreateAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAdminEmail || !newAdminPassword || !newAdminFirstName || !newAdminSecondName) {
-        return alert("Заполните все поля");
-    }
-    
-    const currentToken = localStorage.getItem('token') || '';
-    const MASTER_TOKEN = 'jX+vjnkjoQUxSq7Q3opbVISIrAdD1HFFFRH8EGfLDn0=';
-    let tokenToSend = currentToken;
-
-    if (currentToken === MASTER_TOKEN) {
-      tokenToSend = MASTER_TOKEN;
-    } else if (currentToken.includes('.')) {
-      try {
-        const decoded = JSON.parse(window.atob(currentToken.split('.')[1]));
-        if (decoded.id === 0) {
-          tokenToSend = MASTER_TOKEN;
-        }
-      } catch (err) {
-        tokenToSend = currentToken;
-      }
+    if (!newAdminEmail || !newAdminPassword || !newAdminFirstName || !newAdminSecondName || !masterKey) {
+        return alert("Заполните все поля, включая секретный мастер-ключ подтверждения");
     }
 
     const adminHeaders = {
       'Content-Type': 'application/json',
-      'Authorization': tokenToSend
+      // Безопасно: Передаем ключ, введенный пользователем вручную на форме
+      'Authorization': masterKey.trim()
     };
 
     console.log("ОТПРАВЛЯЕМЫЕ ЗАГОЛОВКИ:", adminHeaders);
@@ -274,11 +258,12 @@ export const AdminPanel = () => {
             setNewAdminPassword('');
             setNewAdminFirstName('');
             setNewAdminSecondName('');
+            setMasterKey(''); // Сбрасываем ключ после успешной отправки
             setShowAdminModal(false);
         } else {
             const errorData = await res.json().catch(() => null);
             if (res.status === 403 || res.status === 404) {
-                alert("ОШИБКА ДОСТУПА: Только Системный Администратор может создавать новых админов.");
+                alert("ОШИБКА ДОСТУПА: Неверный мастер-ключ подтверждения или у вас нет прав.");
                 setIsSystemAdmin(false);
                 setShowAdminModal(false);
             } else {
@@ -489,6 +474,19 @@ export const AdminPanel = () => {
                               {showAdminPassword ? <EyeOff size={18}/> : <Eye size={18}/>}
                           </button>
                       </div>
+                  </div>
+
+                  {/* Добавлено поле ввода секретного мастер-ключа */}
+                  <div className="space-y-2">
+                      <label className="text-[9px] text-slate-400 font-black tracking-widest ml-2">МАСТЕР-КЛЮЧ ПОДТВЕРЖДЕНИЯ СИС-АДМИНА</label>
+                      <input 
+                          type="password" 
+                          required 
+                          value={masterKey}
+                          onChange={(e) => setMasterKey(e.target.value)}
+                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-5 py-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:bg-white transition-all"
+                          placeholder="ВВЕДИТЕ СЕКРЕТНЫЙ КЛЮЧ СИСТЕМЫ"
+                      />
                   </div>
 
                   <button 

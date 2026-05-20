@@ -134,8 +134,8 @@ export const TeacherProfile = () => {
     const assignedGroupIds = new Set<string>();
     
     availableTests.forEach(t => {
-        const tTeacherId = String(t.teacherId ?? t.teacher_id);
-        const tGroupId = String(t.assignedGroupId ?? t.assigned_group_id);
+        const tTeacherId = String(t.teacherId);
+        const tGroupId = String(t.assignedGroupId);
         if (tTeacherId === currentTeacherId && tGroupId && tGroupId !== 'null' && tGroupId !== 'undefined') {
             assignedGroupIds.add(tGroupId);
         }
@@ -162,8 +162,8 @@ export const TeacherProfile = () => {
         let topicName = monitorData.topic || "СПИСОК ГРУППЫ (ТЕСТ НЕ НАЧАТ)";
         
         if (monitorData.topic) {
-           const studentTest = availableTests.find(t => (t.docxName || t.docx_name) === monitorData.topic);
-           const tTeacherId = String(studentTest?.teacherId ?? studentTest?.teacher_id);
+           const studentTest = availableTests.find(t => t.docxName === monitorData.topic);
+           const tTeacherId = String(studentTest?.teacherId || '');
            
            if (studentTest && tTeacherId !== String(currentUser?.id)) {
               topicName = "СПИСОК ГРУППЫ (ТЕСТ НЕ НАЧАТ)";
@@ -185,8 +185,8 @@ export const TeacherProfile = () => {
       const filtered: Record<string, any[]> = {};
 
       for (const [topic, studentsList] of Object.entries(data)) {
-          const studentTest = availableTests.find(t => (t.docxName || t.docx_name) === topic);
-          const subjectId = studentTest ? String(studentTest.belongsTo || studentTest.belongs_to) : '';
+          const studentTest = availableTests.find(t => t.docxName === topic);
+          const subjectId = studentTest ? String(studentTest.belongsTo) : '';
           const courseObj = courses.find(c => String(c.id) === subjectId);
           const subjectName = courseObj ? courseObj.title.toLowerCase() : '';
 
@@ -197,7 +197,7 @@ export const TeacherProfile = () => {
               if (!groupNameStr.includes(q) && !topicLower.includes(q) && !subjectName.includes(q)) continue; 
           }
 
-          filtered[topic] = studentsList;
+          filtered[topic] = studentsList as any[];
       }
       return filtered;
   }, [getGroupData, searchQuery, filterSubject, groups, availableTests, courses]);
@@ -211,17 +211,17 @@ export const TeacherProfile = () => {
 
   const getUniquePools = (subjectId: string) => {
     if (!subjectId) return [];
-    const poolsOfSubject = availableTests.filter(t => String(t.belongsTo || t.belongs_to) === String(subjectId));
+    const poolsOfSubject = availableTests.filter(t => String(t.belongsTo) === String(subjectId));
     const uniquePoolsMap = new Map();
     for (const p of poolsOfSubject) {
-      const name = p.docxName || p.docx_name;
+      const name = p.docxName;
       if (!uniquePoolsMap.has(name) || uniquePoolsMap.get(name).id < p.id) {
         uniquePoolsMap.set(name, p);
       }
     }
     return Array.from(uniquePoolsMap.values()).sort((a, b) => {
-      const nameA = a.docxName || a.docx_name || '';
-      const nameB = b.docxName || b.docx_name || '';
+      const nameA = a.docxName || '';
+      const nameB = b.docxName || '';
       return nameA.localeCompare(nameB);
     });
   };
@@ -364,10 +364,10 @@ export const TeacherProfile = () => {
     const studentTopic = liveMonitor[sId]?.topic;
     
     const test = availableTests.find(t => 
-        (t.docxName || t.docx_name) === studentTopic && 
-        String(t.teacherId ?? t.teacher_id) === String(currentUser?.id)
+        t.docxName === studentTopic && 
+        String(t.teacherId) === String(currentUser?.id)
     );
-    const finalTest = test || availableTests.find(t => (t.docxName || t.docx_name) === studentTopic);
+    const finalTest = test || availableTests.find(t => t.docxName === studentTopic);
 
     if (!finalTest) {
       alert("Ошибка: Тест не найден");
@@ -387,7 +387,7 @@ export const TeacherProfile = () => {
   };
 
   const handleExportReport = (topicName: string) => {
-    const test = availableTests.find(t => (t.docxName || t.docx_name) === topicName);
+    const test = availableTests.find(t => t.docxName === topicName);
     const token = localStorage.getItem('token');
     
     if (test && token) {
@@ -498,8 +498,8 @@ export const TeacherProfile = () => {
                       })
                       .map(([topicName, studentsList]) => {
                         
-                        const testObj = availableTests.find(t => (t.docxName || t.docx_name) === topicName);
-                        const subjId = testObj ? String(testObj.belongsTo || testObj.belongs_to) : '';
+                        const testObj = availableTests.find(t => t.docxName === topicName);
+                        const subjId = testObj ? String(testObj.belongsTo) : '';
                         const subjObj = courses.find(c => String(c.id) === subjId);
                         const subjectDisplay = subjObj ? subjObj.title : 'НЕИЗВЕСТНЫЙ ПРЕДМЕТ';
 
@@ -709,7 +709,7 @@ export const TeacherProfile = () => {
                     </select>
                     <select className="p-6 bg-slate-100 rounded-[2rem] font-black outline-none border-4 border-transparent focus:border-orange-200" disabled={!inspectedSubject} value={inspectedPool} onChange={e => loadInspectorQuestions(e.target.value)}>
                         <option value="">ВЫБЕРИТЕ ПУЛ ВОПРОСОВ...</option>
-                        {inspectorPools.map(p => <option key={p.id} value={String(p.id)}>{p.docxName || p.docx_name}</option>)}
+                        {inspectorPools.map(p => <option key={p.id} value={String(p.id)}>{p.docxName}</option>)}
                     </select>
                 </div>
 
@@ -796,7 +796,7 @@ export const TeacherProfile = () => {
                 <div className="col-span-full">
                     <select className="w-full bg-blue-50/50 p-8 rounded-[3rem] font-black text-xl border-4 border-blue-100 outline-none focus:border-blue-400 transition-all" value={selPoolId} onChange={e => setSelPoolId(e.target.value)}>
                         <option value="">{selSub ? "ВЫБЕРИТЕ ПУЛ ВОПРОСОВ..." : "СНАЧАЛА ПРЕДМЕТ"}</option>
-                        {filteredPools.map(pool => <option key={pool.id} value={String(pool.id)}>{pool.docxName || pool.docx_name}</option>)}
+                        {filteredPools.map(pool => <option key={pool.id} value={String(pool.id)}>{pool.docxName}</option>)}
                     </select>
                 </div>
 
