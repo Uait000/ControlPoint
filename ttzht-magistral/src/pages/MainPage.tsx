@@ -4,6 +4,7 @@ import {
   Cpu, ShieldCheck, Zap, BookOpen, ChevronRight, Layout, Code, Atom, 
   Calculator, FlaskConical, Globe, HardDrive, Terminal, Settings, Database, Activity 
 } from 'lucide-react';
+import { API_BASE_URL } from '../api';
 
 interface Subject {
   id: string;
@@ -41,7 +42,7 @@ export const MainPage = () => {
     const fetchCourses = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await fetch('/storage/courses', {
+        const response = await fetch(API_BASE_URL +'/storage/courses', {
           headers: {
             'Authorization': `Bearer ${token}`
           }

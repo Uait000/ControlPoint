@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Mail, Lock, KeyRound, ChevronRight, ArrowLeft } from 'lucide-react';
 import type { Group, AuthResponse } from '../types';
+import { API_BASE_URL } from '../api';
 
 interface RegistrationPageProps {
   onAuthSuccess: (data: AuthResponse) => void;
@@ -41,7 +42,7 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onAuthSucces
   });
 
   useEffect(() => {
-    fetch('/groups')
+    fetch(API_BASE_URL +'/groups')
       .then(res => res.json())
       .then(data => setGroups(data))
       .catch(() => setError("СЕРВЕР НЕДОСТУПЕН"));
@@ -55,7 +56,7 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onAuthSucces
     try {
       // ЛОГИКА СБРОСА ПАРОЛЯ: (ОТПРАВКА EMAIL)
       if (mode === 'forgot_email') {
-          const res = await fetch('/auth/forgot-password', {
+          const res = await fetch(API_BASE_URL +'/auth/forgot-password', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ email: formData.email })
@@ -71,7 +72,7 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onAuthSucces
 
       // ЛОГИКА СБРОСА ПАРОЛЯ: (СМЕНА ПАРОЛЯ)
       if (mode === 'forgot_code') {
-          const res = await fetch('/auth/reset-password', {
+          const res = await fetch(API_BASE_URL +'/auth/reset-password', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ 
@@ -100,7 +101,7 @@ export const RegistrationPage: React.FC<RegistrationPageProps> = ({ onAuthSucces
             belongs_to: parseInt(formData.belongs_to),
           };
 
-      const response = await fetch(url, {
+      const response = await fetch(API_BASE_URL +url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { ChevronLeft, BookOpen, FileText, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Subject } from '../types';
+import { API_BASE_URL } from '../api';
 
 export const SubjectSectionsPage = () => {
   const { id } = useParams();
@@ -16,7 +17,7 @@ export const SubjectSectionsPage = () => {
   useEffect(() => {
     const fetchSubject = async () => {
       try {
-        const res = await fetch('/storage/courses', {
+        const res = await fetch(API_BASE_URL +'/storage/courses', {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         });
         if (res.ok) {
@@ -34,7 +35,7 @@ export const SubjectSectionsPage = () => {
   const openPdf = async (fileId: string, title: string) => {
     setIsProcessing(true);
     try {
-      const response = await fetch(`/storage/courses/file/${fileId}`, {
+      const response = await fetch(API_BASE_URL +`/storage/courses/file/${fileId}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       if (!response.ok) throw new Error();

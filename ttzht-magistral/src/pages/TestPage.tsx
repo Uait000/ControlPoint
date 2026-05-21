@@ -5,6 +5,7 @@ import {
   Timer, ChevronRight, CheckCircle2, Lock, Trophy, 
   AlertTriangle, Home, BarChart3, Loader2 
 } from 'lucide-react';
+import { API_BASE_URL } from '../api';
 
 const getGradeData = (percent: number) => {
   if (percent >= 90) return { val: 5, label: 'ОТЛИЧНО', color: 'text-green-500' };
@@ -51,7 +52,7 @@ export const TestPage = () => {
     const token = localStorage.getItem('token');
 
     try {
-      const res = await fetch(`/test/start/${id}`, {
+      const res = await fetch(API_BASE_URL +`/test/start/${id}`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -103,7 +104,7 @@ export const TestPage = () => {
     if (isBlocked || testFinished || !testStarted) return;
     setIsBlocked(true);
     try {
-      await fetch(`/test/violate/${id}`, { method: 'POST', headers });
+      await fetch(API_BASE_URL +`/test/violate/${id}`, { method: 'POST', headers });
       if (socketRef.current?.readyState === 1) socketRef.current.send("focus_lost");
     } catch (e) {}
   };
@@ -129,7 +130,7 @@ export const TestPage = () => {
   const handleFinish = async (finalScore: number) => {
     const percent = Math.round((finalScore / (questions.length || 1)) * 100);
     try {
-      await fetch(`/test/finish/${id}/${finalScore}/${percent}`, { method: 'POST', headers });
+      await fetch(API_BASE_URL +`/test/finish/${id}/${finalScore}/${percent}`, { method: 'POST', headers });
       sessionStorage.setItem(`finished_${id}`, 'true');
       setTestFinished(true);
     } catch (e) {
@@ -141,7 +142,7 @@ export const TestPage = () => {
     let currentScore = score;
     if (selectedIdx !== null) {
       try {
-        const res = await fetch(`/test/submit`, {
+        const res = await fetch(API_BASE_URL +`/test/submit`, {
           method: 'POST',
           headers,
           body: JSON.stringify({ question_id: questions[currentStep].id, selected_option: selectedIdx })

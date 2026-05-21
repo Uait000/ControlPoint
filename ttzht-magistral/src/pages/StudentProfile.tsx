@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { API_BASE_URL } from '../api';
 
 interface UserState {
   id: number;
@@ -42,7 +43,7 @@ export const StudentProfile = () => {
   useEffect(() => {
     const syncProfile = async () => {
       try {
-        const res = await fetch('/test/whoami', { headers });
+        const res = await fetch(API_BASE_URL +'/test/whoami', { headers });
         if (res.ok) {
           const data = await res.json();
           const updated: UserState = {
@@ -61,7 +62,7 @@ export const StudentProfile = () => {
 
     const fetchGroups = async () => {
       try {
-        const res = await fetch('/groups', { headers });
+        const res = await fetch(API_BASE_URL +'/groups', { headers });
         const data = await res.json();
         setGroups(Array.isArray(data) ? data : []);
       } catch (err) {
@@ -76,7 +77,7 @@ export const StudentProfile = () => {
   useEffect(() => {
     const fetchMyTests = async () => {
       try {
-        const res = await fetch('/tests/available', { headers });
+        const res = await fetch(API_BASE_URL +'/tests/available', { headers });
         const data = await res.json();
         
         console.log("СТРУКТУРА ТЕСТОВ С БЭКЕНДА:", data);

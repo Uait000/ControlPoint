@@ -2,9 +2,10 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Users, Plus, Wifi, ChevronDown, X, Database, BookOpen, Award, RefreshCw, Search,
-  Download, BarChart2, Activity 
+  BarChart2, Activity 
 } from 'lucide-react';
 import type { Subject, Group, ApiTest, TeacherQuestion, User } from '../types';
+import { API_BASE_URL } from '../api';
 
 const getGrade = (percent: any) => {
   const p = Number(percent);
@@ -77,7 +78,7 @@ export const TeacherProfile = () => {
 
         if (!userObj?.id || !userObj?.login) {
             try {
-                const res = await fetch('/test/whoami', { headers });
+                const res = await fetch(API_BASE_URL +'/test/whoami', { headers });
                 if (res.ok) {
                     const data = await res.json();
                     const targetData = data.user || data;
@@ -90,36 +91,66 @@ export const TeacherProfile = () => {
         
         setCurrentUser(userObj || { login: 'ПРЕПОДАВАТЕЛЬ' });
 
-        fetch('/storage/courses', { headers }).then(r => r.json()).then(data => setCourses(Array.isArray(data) ? data : []));
-        fetch('/groups', { headers }).then(r => r.json()).then(data => setGroups(Array.isArray(data) ? data : []));
-        fetch('/tests/available', { headers }).then(r => r.json()).then(data => setAvailableTests(Array.isArray(data) ? data : []));
-        fetch('/auth/students', { headers }).then(r => r.json()).then(data => setStudents(Array.isArray(data) ? data : []));
+        fetch(API_BASE_URL +'/storage/courses', { headers }).then(r => r.json()).then(data => setCourses(Array.isArray(data) ? data : []));
+        fetch(API_BASE_URL +'/groups', { headers }).then(r => r.json()).then(data => setGroups(Array.isArray(data) ? data : []));
+        fetch(API_BASE_URL +'/tests/available', { headers }).then(r => r.json()).then(data => setAvailableTests(Array.isArray(data) ? data : []));
+        fetch(API_BASE_URL +'/auth/students', { headers }).then(r => r.json()).then(data => setStudents(Array.isArray(data) ? data : []));
     };
 
     initializeData();
     const interval = setInterval(initializeData, 1000);
 
     const connectWS = () => {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        ws.current = new WebSocket(`${protocol}//${window.location.host}/test/ws/monitor?token=${localStorage.getItem('token')}`);
-        
-        ws.current.onmessage = (e) => {
-            const parts = e.data.split(':');
-            if (parts.length >= 3) {
-                const [type, sId, ...rest] = parts;
-                const studentId = Number(sId);
-                setLiveMonitor(prev => {
-                    const current = prev[studentId] || {};
-                    if (type === 'finish') return { ...prev, [studentId]: { ...current, status: 'Finished', score: rest[0], percent: rest[1] } };
-                    if (type === 'topic') return { ...prev, [studentId]: { ...current, topic: rest.join(':') } };
-                    if (type === 'progress') return { ...prev, [studentId]: { ...current, progress: rest[0] } };
-                    if (type === 'status') return { ...prev, [studentId]: { ...current, status: rest[0] } };
-                    return prev;
-                });
-            }
-        };
-        ws.current.onclose = () => setTimeout(connectWS, 3000);
+      const wsBaseUrl = API_BASE_URL 
+          ? API_BASE_URL.replace('http', 'ws') 
+          : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
+          
+      const wsUrl = `${wsBaseUrl}/test/ws/monitor?token=${localStorage.getItem('token')}`;
+      
+      ws.current = new WebSocket(wsUrl);
+      
+      ws.current.onmessage = (e) => {
+          const parts = e.data.split(':');
+          if (parts.length >= 3) {
+              const [type, sId, ...rest] = parts;
+              const studentId = Number(sId);
+              
+              setLiveMonitor(prev => {
+                  const currentStudent = prev[studentId] || { activeTopic: '' };
+                  const activeTopic = currentStudent.activeTopic;
+                  
+                  // Сохраняем данные индивидуально под каждую тему
+                  if (type === 'topic') {
+                      const newTopic = rest.join(':');
+                      return { 
+                          ...prev, 
+                          [studentId]: { 
+                              ...currentStudent, 
+                              activeTopic: newTopic,
+                              [newTopic]: { ...(currentStudent[newTopic] || {}), status: 'Online' }
+                          } 
+                      };
+                  }
+                  
+                  if (activeTopic) {
+                      const topicData = currentStudent[activeTopic] || {};
+                      if (type === 'finish') return { ...prev, [studentId]: { ...currentStudent, [activeTopic]: { ...topicData, status: 'Finished', score: rest[0], percent: rest[1] } } };
+                      if (type === 'progress') return { ...prev, [studentId]: { ...currentStudent, [activeTopic]: { ...topicData, progress: rest[0] } } };
+                      if (type === 'status') return { ...prev, [studentId]: { ...currentStudent, [activeTopic]: { ...topicData, status: rest[0] } } };
+                  } else {
+                      // Фолбек, если тема не была передана (старое поведение)
+                      if (type === 'finish') return { ...prev, [studentId]: { ...currentStudent, status: 'Finished', score: rest[0], percent: rest[1] } };
+                      if (type === 'progress') return { ...prev, [studentId]: { ...currentStudent, progress: rest[0] } };
+                      if (type === 'status') return { ...prev, [studentId]: { ...currentStudent, status: rest[0] } };
+                  }
+                  
+                  return prev;
+              });
+          }
+      };
+      ws.current.onclose = () => setTimeout(connectWS, 3000);
     };
+    
     connectWS();
     return () => {
         clearInterval(interval);
@@ -155,25 +186,50 @@ export const TeacherProfile = () => {
   }, [groups, availableTests, currentUser, localAssignedGroups]);
 
   const getGroupData = useCallback((groupId: number) => {
-    return students
-      .filter(s => String(s.belongsTo || s.belongs_to) === String(groupId))
-      .reduce((acc, s) => {
-        const monitorData = liveMonitor[s.id] || {};
-        let topicName = monitorData.topic || "СПИСОК ГРУППЫ (ТЕСТ НЕ НАЧАТ)";
-        
-        if (monitorData.topic) {
-           const studentTest = availableTests.find(t => t.docxName === monitorData.topic);
-           const tTeacherId = String(studentTest?.teacherId || '');
-           
-           if (studentTest && tTeacherId !== String(currentUser?.id)) {
-              topicName = "СПИСОК ГРУППЫ (ТЕСТ НЕ НАЧАТ)";
-           }
-        }
+    const groupStudents = students.filter(s => String(s.belongsTo || s.belongs_to) === String(groupId));
+    
+    // Получаем все назначенные тесты для данной группы от текущего преподавателя
+    const assignedTests = availableTests.filter(t => 
+       String(t.assignedGroupId) === String(groupId) && 
+       String(t.teacherId) === String(currentUser?.id)
+    );
+    
+    const topics = new Set(assignedTests.map(t => t.docxName));
 
-        if (!acc[topicName]) acc[topicName] = [];
-        acc[topicName].push(s);
-        return acc;
-      }, {} as Record<string, any[]>);
+    // Добавляем темы, в которых была активность, даже если они не в списке назначенных
+    groupStudents.forEach(s => {
+        const mon = liveMonitor[s.id];
+        if (mon) {
+            Object.keys(mon).forEach(key => {
+                if (key !== 'activeTopic' && key !== 'topic' && key.trim() !== '') {
+                    topics.add(key);
+                }
+            });
+            if (mon.topic && !topics.has(mon.topic)) topics.add(mon.topic);
+        }
+    });
+
+    const result: Record<string, any[]> = {};
+
+    if (topics.size === 0) {
+        result["СПИСОК ГРУППЫ (ТЕСТ НЕ НАЧАТ)"] = groupStudents.map(s => ({ ...s, _monitor: {} }));
+        return result;
+    }
+
+    topics.forEach(topic => {
+        result[topic] = groupStudents.map(s => {
+            const mon = liveMonitor[s.id] || {};
+            let topicData = mon[topic]; 
+            
+            if (!topicData && (mon.activeTopic === topic || mon.topic === topic)) {
+                topicData = mon;
+            }
+            
+            return { ...s, _monitor: topicData || {} };
+        });
+    });
+
+    return result;
   }, [students, liveMonitor, availableTests, currentUser]);
 
   const getFilteredGroupData = useCallback((groupId: number) => {
@@ -194,7 +250,13 @@ export const TeacherProfile = () => {
           
           if (q) {
               const topicLower = topic.toLowerCase();
-              if (!groupNameStr.includes(q) && !topicLower.includes(q) && !subjectName.includes(q)) continue; 
+              if (!groupNameStr.includes(q) && !topicLower.includes(q) && !subjectName.includes(q)) {
+                  // Поиск по ФИО студентов
+                  const hasStudentMatch = studentsList.some((s: any) => 
+                      (`${s.secondName || s.second_name || ''} ${s.firstName || s.first_name || s.login}`).toLowerCase().includes(q)
+                  );
+                  if (!hasStudentMatch) continue;
+              }
           }
 
           filtered[topic] = studentsList as any[];
@@ -241,7 +303,7 @@ export const TeacherProfile = () => {
 
         Object.values(grpData).forEach(studentsList => {
             studentsList.forEach((student: any) => {
-                const mon = liveMonitor[student.id] || {};
+                const mon = student._monitor || {};
                 if (mon.status === 'Finished' && mon.percent !== undefined) {
                     const grade = getGrade(mon.percent).val;
                     if (grade === 5) { total5++; g5++; }
@@ -265,7 +327,7 @@ export const TeacherProfile = () => {
     });
 
     return { total5, total4, total3, total2, totalFinished: total5 + total4 + total3 + total2, groupStats };
-  }, [displayedGroups, getFilteredGroupData, liveMonitor]);
+  }, [displayedGroups, getFilteredGroupData]);
 
   const loadInspectorQuestions = async (poolId: string) => {
     setInspectedPool(poolId);
@@ -281,7 +343,7 @@ export const TeacherProfile = () => {
       
       while (searchId > 0 && maxAttempts > 0) {
           try {
-              const res = await fetch(`/tests/${searchId}/questions/review`, { headers });
+              const res = await fetch(API_BASE_URL +`/tests/${searchId}/questions/review`, { headers });
               if (res.ok) {
                   const result = await res.json();
                   if (result && result.length > 0) {
@@ -322,7 +384,7 @@ export const TeacherProfile = () => {
     };
 
     try {
-        const res = await fetch(`/questions/${qId}`, {
+        const res = await fetch(API_BASE_URL +`/questions/${qId}`, {
             method: 'PATCH',
             headers,
             body: JSON.stringify(payload)
@@ -341,7 +403,7 @@ export const TeacherProfile = () => {
   const handleAssignTest = async () => {
     if (!selPoolId || !selGrp) return alert("ОШИБКА: ДАННЫЕ НЕ ВЫБРАНЫ");
     
-    const res = await fetch('/tests/assign', {
+    const res = await fetch(API_BASE_URL +'/tests/assign', {
       method: 'POST',
       headers,
       body: JSON.stringify({ 
@@ -355,45 +417,37 @@ export const TeacherProfile = () => {
       alert(`ТЕСТ УСПЕШНО НАЗНАЧЕН!`);
       setShowCreateModal(false);
       setLocalAssignedGroups(prev => new Set(prev).add(String(selGrp)));
-      fetch('/tests/available', { headers }).then(r => r.json()).then(data => setAvailableTests(Array.isArray(data) ? data : []));
+      fetch(API_BASE_URL +'/tests/available', { headers }).then(r => r.json()).then(data => setAvailableTests(Array.isArray(data) ? data : []));
     }
   };
 
-  const handleReset = async (sId: number) => {
+  const handleReset = async (sId: number, topicName: string) => {
     if (!confirm("СБРОСИТЬ РЕЗУЛЬТАТ И РАЗРЕШИТЬ ПЕРЕСДАЧУ?")) return;
-    const studentTopic = liveMonitor[sId]?.topic;
     
     const test = availableTests.find(t => 
-        t.docxName === studentTopic && 
+        t.docxName === topicName && 
         String(t.teacherId) === String(currentUser?.id)
     );
-    const finalTest = test || availableTests.find(t => t.docxName === studentTopic);
+    const finalTest = test || availableTests.find(t => t.docxName === topicName);
 
     if (!finalTest) {
       alert("Ошибка: Тест не найден");
       return;
     }
 
-    const res = await fetch(`/test/reset/${sId}/${finalTest.id}`, { method: 'POST', headers });
+    const res = await fetch(API_BASE_URL +`/test/reset/${sId}/${finalTest.id}`, { method: 'POST', headers });
     if (res.ok) {
       setLiveMonitor(prev => {
         const next = { ...prev };
-        delete next[sId]; 
+        if (next[sId]) {
+            const studentData = { ...next[sId] };
+            delete studentData[topicName];
+            next[sId] = studentData;
+        }
         return next;
       });
     } else {
       alert("Ошибка при сбросе результата");
-    }
-  };
-
-  const handleExportReport = (topicName: string) => {
-    const test = availableTests.find(t => t.docxName === topicName);
-    const token = localStorage.getItem('token');
-    
-    if (test && token) {
-        window.open(`/export/${test.id}/${token}`, '_blank');
-    } else {
-        alert("ОШИБКА: Тест не найден или у вас нет прав доступа. Экспорт временно недоступен.");
     }
   };
 
@@ -514,16 +568,6 @@ export const TeacherProfile = () => {
                                   </span>
                                   <span className="text-[11px] text-slate-400 font-black">{(studentsList as any[]).length} ЧЕЛ.</span>
                                 </div>
-
-                                {topicName !== "СПИСОК ГРУППЫ (ТЕСТ НЕ НАЧАТ)" && (
-                                  <button 
-                                    onClick={() => handleExportReport(topicName)}
-                                    className="px-6 py-3 bg-emerald-500 text-white rounded-2xl shadow-xl hover:bg-emerald-600 active:scale-95 transition-all flex items-center gap-3"
-                                  >
-                                    <Download size={20} />
-                                    <span className="tracking-widest">ЭКСПОРТ ОТЧЕТА</span>
-                                  </button>
-                                )}
                             </div>
 
                             <div className="overflow-x-auto rounded-[2.5rem] border border-slate-100 bg-white shadow-sm">
@@ -543,10 +587,11 @@ export const TeacherProfile = () => {
                                       return nameA.localeCompare(nameB);
                                     })
                                     .map(student => {
-                                    const monitorData = liveMonitor[student.id] || {};
+                                    
+                                    const monitorData = student._monitor || {};
                                     const isFinished = monitorData.status === 'Finished';
                                     const grade = isFinished ? getGrade(monitorData.percent) : null;
-                                    const hasActivity = Object.keys(monitorData).length > 0;
+                                    const hasActivity = Object.keys(monitorData).length > 0 && monitorData.status;
 
                                     return (
                                       <tr key={student.id} className="border-b border-slate-50 hover:bg-blue-50/20 transition-colors">
@@ -580,7 +625,7 @@ export const TeacherProfile = () => {
 
                                                   {hasActivity && (
                                                     <button 
-                                                      onClick={() => handleReset(student.id)} 
+                                                      onClick={() => handleReset(student.id, topicName)} 
                                                       title="Сбросить результат или разблокировать тест"
                                                       className="p-4 bg-slate-800 text-white rounded-2xl hover:bg-red-600 transition-all shadow-lg active:scale-90"
                                                     >

@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      // Должен стоять первым для корректного перехвата
+      // Должен стоять первым для корректного перехвата WebSocket
       '/test/ws': {
         target: 'ws://127.0.0.1:8000',
         ws: true,
@@ -21,15 +21,13 @@ export default defineConfig({
       },
 
       // СТАНДАРТНЫЕ СИСТЕМНЫЕ ПУТИ
-      '/auth': 'http://127.0.0.1:8000',
-      '/groups': 'http://127.0.0.1:8000',
-      '/tests': 'http://127.0.0.1:8000',
-      '/questions': 'http://127.0.0.1:8000',
-      '/group': 'http://127.0.0.1:8000',
-      
-      '/export': 'http://127.0.0.1:8000',    // Для экспорта отчетов (HTML/PDF)
-      '/escalate': 'http://127.0.0.1:8000',  // Для эскалации курсов в админке
-
+      '/auth': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+      '/groups': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+      '/tests': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+      '/questions': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+      '/group': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+      '/export': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+      '/escalate': { target: 'http://127.0.0.1:8000', changeOrigin: true },
 
       // ХРАНИЛИЩЕ И ФАЙЛЫ
       '/storage': {

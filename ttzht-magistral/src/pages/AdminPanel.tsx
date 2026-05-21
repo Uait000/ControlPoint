@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Subject } from '../types';
+import {API_BASE_URL} from '../api'
 
 const AVAILABLE_ICONS = [
   { name: 'Cpu', Icon: Cpu }, { name: 'Zap', Icon: Zap }, { name: 'ShieldCheck', Icon: ShieldCheck },
@@ -44,7 +45,7 @@ export const AdminPanel = () => {
 
   const fetchSubjects = async () => {
     try {
-      const res = await fetch('/storage/courses', { headers: getHeaders() });
+      const res = await fetch(API_BASE_URL +'/storage/courses', { headers: getHeaders() });
       if (res.ok) {
         const data = await res.json();
         setSubjects(data);
@@ -86,7 +87,7 @@ export const AdminPanel = () => {
   const syncWithServer = async (subject: Subject) => {
     setIsSyncing(true);
     try {
-      const res = await fetch(`/storage/courses/${subject.id}`, {
+      const res = await fetch(API_BASE_URL +`/storage/courses/${subject.id}`, {
         method: 'PATCH',
         headers: getHeaders(),
         body: JSON.stringify(subject)
@@ -110,7 +111,7 @@ export const AdminPanel = () => {
     };
     
     try {
-        const res = await fetch('/storage/courses', {
+        const res = await fetch(API_BASE_URL +'/storage/courses', {
             method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify(newSubData)
@@ -130,7 +131,7 @@ export const AdminPanel = () => {
   const deleteSubject = async (id: string) => {
     if (!window.confirm("УДАЛИТЬ ВЕСЬ ПРЕДМЕТ СО ВСЕМИ ДАННЫМИ?")) return;
     try {
-      const res = await fetch(`/storage/courses/${id}`, {
+      const res = await fetch(API_BASE_URL +`/storage/courses/${id}`, {
         method: 'DELETE',
         headers: getHeaders(false)
       });
@@ -184,7 +185,7 @@ export const AdminPanel = () => {
     formData.append('file', file);
 
     try {
-      const uploadRes = await fetch('/storage/courses/upload', {
+      const uploadRes = await fetch(API_BASE_URL +'/storage/courses/upload', {
         method: 'POST',
         headers: getHeaders(false),
         body: formData
@@ -241,7 +242,7 @@ export const AdminPanel = () => {
     console.log("ОТПРАВЛЯЕМЫЕ ЗАГОЛОВКИ:", adminHeaders);
     setIsCreatingAdmin(true);
     try {
-        const res = await fetch('/auth/register-admin', {
+        const res = await fetch(API_BASE_URL +'/auth/register-admin', {
             method: 'POST',
             headers: adminHeaders,
             body: JSON.stringify({ 
