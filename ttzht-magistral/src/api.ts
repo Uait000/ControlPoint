@@ -1,6 +1,6 @@
 import type { TeacherQuestion } from './types';
 
-export const API_BASE_URL = "http://127.0.0.1:8000"; /// Перед отправкой на прод - ЗАВМЕНИТЬ 
+export const API_BASE_URL = "http://127.0.0.1:8000"; /// Перед отправкой на прод - ЗАМЕНИТЬ 
 
 const getHeaders = () => ({
   'Content-Type': 'application/json',
@@ -11,12 +11,12 @@ export const api = {
   API_BASE_URL,
 
   async get(url: string) {
-    const res = await fetch(url, { headers: getHeaders() });
+    const res = await fetch(API_BASE_URL + url, { headers: getHeaders() });
     return res.json();
   },
 
   async post(url: string, body: any) {
-    const res = await fetch(url, {
+    const res = await fetch(API_BASE_URL + url, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(body)
@@ -25,7 +25,7 @@ export const api = {
   },
 
   async patch(url: string, body: any) {
-    return fetch(url, {
+    return fetch(API_BASE_URL + url, {
       method: 'PATCH',
       headers: getHeaders(),
       body: JSON.stringify(body)
@@ -33,7 +33,7 @@ export const api = {
   },
 
   /**
-   * Получает список вопросов теста с правильными ответами для проверки преподавателем[cite: 1, 2]
+   * Получает список вопросов теста с правильными ответами для проверки преподавателем
    */
   async getQuestionsForReview(testId: number): Promise<TeacherQuestion[]> {
     const res = await fetch(API_BASE_URL + `/tests/${testId}/questions/review`, { 

@@ -293,16 +293,20 @@ export const TeacherProfile = () => {
 
   const analyticsData = useMemo(() => {
     let total5 = 0, total4 = 0, total3 = 0, total2 = 0;
-    const groupStats: { name: string, avg: number, counts: { 5: number, 4: number, 3: number, 2: number } }[] = [];
+    const groupStats: { name: string, topic: string, avg: number, counts: { 5: number, 4: number, 3: number, 2: number } }[] = [];
 
     displayedGroups.forEach(group => {
         const grpData = getFilteredGroupData(group.id);
-        let gScore = 0;
-        let gCount = 0;
-        let g5 = 0, g4 = 0, g3 = 0, g2 = 0;
 
-        Object.values(grpData).forEach(studentsList => {
-            studentsList.forEach((student: any) => {
+        // Итерация по каждому отдельному тесту (теме) в рамках группы
+        Object.entries(grpData).forEach(([topic, studentsList]) => {
+            if (topic === "СПИСОК ГРУППЫ (ТЕСТ НЕ НАЧАТ)") return;
+
+            let gScore = 0;
+            let gCount = 0;
+            let g5 = 0, g4 = 0, g3 = 0, g2 = 0;
+
+            (studentsList as any[]).forEach((student: any) => {
                 const mon = student._monitor || {};
                 if (mon.status === 'Finished' && mon.percent !== undefined) {
                     const grade = getGrade(mon.percent).val;
@@ -310,20 +314,22 @@ export const TeacherProfile = () => {
                     if (grade === 4) { total4++; g4++; }
                     if (grade === 3) { total3++; g3++; }
                     if (grade === 2) { total2++; g2++; }
-                    
-                    gScore += Number(mon.percent);
+
+                    // Реализуем базовую формулу: суммируем именно оценки
+                    gScore += grade;
                     gCount++;
                 }
             });
-        });
 
-        if (gCount > 0) {
-            groupStats.push({
-                name: `${group.name}-${group.course}-${group.number}`,
-                avg: Math.round(gScore / gCount),
-                counts: { 5: g5, 4: g4, 3: g3, 2: g2 }
-            });
-        }
+            if (gCount > 0) {
+                groupStats.push({
+                    name: `${group.name}-${group.course}-${group.number}`,
+                    topic: topic,
+                    avg: Number((gScore / gCount).toFixed(2)), // Средний балл (Сумма оценок / Количество оценок)
+                    counts: { 5: g5, 4: g4, 3: g3, 2: g2 }
+                });
+            }
+        });
     });
 
     return { total5, total4, total3, total2, totalFinished: total5 + total4 + total3 + total2, groupStats };
@@ -685,19 +691,23 @@ export const TeacherProfile = () => {
             </div>
 
             <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
-                <h3 className="text-2xl font-black italic text-slate-800 mb-8 flex items-center gap-3"><BarChartIcon /> СРЕДНИЙ ПРОЦЕНТ ГРУПП</h3>
+                <h3 className="text-2xl font-black italic text-slate-800 mb-8 flex items-center gap-3"><BarChartIcon /> СРЕДНИЙ БАЛЛ ПО ТЕСТАМ</h3>
                 {analyticsData.groupStats.length > 0 ? (
                     <div className="space-y-8">
                         {analyticsData.groupStats.map(stat => (
-                            <div key={stat.name}>
-                                <div className="flex justify-between items-center mb-3">
-                                    <span className="text-sm font-black text-slate-700">ГРУППА {stat.name}</span>
-                                    <span className="text-xl font-black text-blue-600">{stat.avg}%</span>
+                            <div key={`${stat.name}-${stat.topic}`}>
+                                <div className="flex justify-between items-end mb-3">
+                                    <span className="text-sm font-black text-slate-700 leading-tight">
+                                        ГРУППА {stat.name} <br/>
+                                        <span className="text-[10px] text-slate-500 uppercase tracking-widest">{stat.topic}</span>
+                                    </span>
+                                    <span className="text-xl font-black text-blue-600">{stat.avg}</span>
                                 </div>
                                 <div className="w-full h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner">
                                     <motion.div 
                                         initial={{ width: 0 }} 
-                                        animate={{ width: `${stat.avg}%` }} 
+                                        // Ограничиваем прогресс 5 баллами (от 0 до 100%)
+                                        animate={{ width: `${(stat.avg / 5) * 100}%` }} 
                                         className="h-full bg-gradient-to-r from-blue-600 to-blue-400" 
                                     />
                                 </div>
@@ -710,21 +720,24 @@ export const TeacherProfile = () => {
             </div>
 
             <div className="col-span-1 md:col-span-2 bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
-                <h3 className="text-2xl font-black italic text-slate-800 mb-8 flex items-center gap-3"><Users className="text-blue-500" /> ДЕТАЛЬНАЯ СТАТИСТИКА ПО ГРУППАМ</h3>
+                <h3 className="text-2xl font-black italic text-slate-800 mb-8 flex items-center gap-3"><Users className="text-blue-500" /> ДЕТАЛЬНАЯ СТАТИСТИКА (ПО ГРУППАМ И ТЕСТАМ)</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {analyticsData.groupStats.map(stat => (
-                        <div key={stat.name} className="p-8 bg-slate-50 rounded-[2rem] border-2 border-slate-100 shadow-sm hover:border-blue-200 transition-colors">
-                             <h4 className="text-xl font-black text-blue-800 mb-6">{stat.name}</h4>
-                             <div className="space-y-4">
-                                 <div className="flex justify-between items-center text-sm font-bold"><span className="text-green-600">ОТЛИЧНО (5)</span> <span>{stat.counts[5]} чел.</span></div>
-                                 <div className="flex justify-between items-center text-sm font-bold"><span className="text-blue-600">ХОРОШО (4)</span> <span>{stat.counts[4]} чел.</span></div>
-                                 <div className="flex justify-between items-center text-sm font-bold"><span className="text-orange-600">УДОВЛ. (3)</span> <span>{stat.counts[3]} чел.</span></div>
-                                 <div className="flex justify-between items-center text-sm font-bold"><span className="text-red-600">НЕУД. (2)</span> <span>{stat.counts[2]} чел.</span></div>
-                             </div>
-                             <div className="mt-8 pt-6 border-t-2 border-slate-200 flex justify-between items-center">
-                                 <span className="text-slate-500 font-black">СРЕДНИЙ БАЛЛ:</span>
-                                 <span className="text-3xl font-black text-blue-600">{stat.avg}%</span>
-                             </div>
+                        <div key={`${stat.name}-${stat.topic}`} className="p-8 bg-slate-50 rounded-[2rem] border-2 border-slate-100 shadow-sm hover:border-blue-200 transition-colors flex flex-col justify-between">
+                            <div>
+                                <h4 className="text-xl font-black text-blue-800 mb-2">{stat.name}</h4>
+                                <p className="text-[10px] font-black text-slate-500 mb-6 uppercase tracking-widest leading-tight">{stat.topic}</p>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center text-sm font-bold"><span className="text-green-600">ОТЛИЧНО (5)</span> <span>{stat.counts[5]} чел.</span></div>
+                                    <div className="flex justify-between items-center text-sm font-bold"><span className="text-blue-600">ХОРОШО (4)</span> <span>{stat.counts[4]} чел.</span></div>
+                                    <div className="flex justify-between items-center text-sm font-bold"><span className="text-orange-600">УДОВЛ. (3)</span> <span>{stat.counts[3]} чел.</span></div>
+                                    <div className="flex justify-between items-center text-sm font-bold"><span className="text-red-600">НЕУД. (2)</span> <span>{stat.counts[2]} чел.</span></div>
+                                </div>
+                            </div>
+                            <div className="mt-8 pt-6 border-t-2 border-slate-200 flex justify-between items-center">
+                                <span className="text-slate-500 font-black">СРЕДНИЙ БАЛЛ:</span>
+                                <span className="text-3xl font-black text-blue-600">{stat.avg}</span>
+                            </div>
                         </div>
                     ))}
                 </div>
