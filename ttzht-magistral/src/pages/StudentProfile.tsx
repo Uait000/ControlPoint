@@ -6,6 +6,7 @@ import {
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { API_BASE_URL } from '../api';
+import defaultAvatar from '../assets/avatarka.png';
 
 interface UserState {
   id: number;
@@ -113,6 +114,26 @@ export const StudentProfile = () => {
     return found ? `${found.name}-${found.course}-${found.number}` : `№${user.belongs_to}`;
   }, [groups, user.belongs_to]);
 
+  // Фильтрация и дедупликация тестов по уникальной теме (docxName)
+  const uniqueAssignedTests = useMemo(() => {
+    const testMap = new Map<string, any>();
+    
+    assignedTests.forEach((test) => {
+      const key = test.docxName || 'UNKNOWN';
+      
+      if (!testMap.has(key)) {
+        testMap.set(key, test);
+      } else {
+        const existingTest = testMap.get(key);
+        if (test.progress > (existingTest.progress || 0) || test.status === 'Finished') {
+          testMap.set(key, test);
+        }
+      }
+    });
+    
+    return Array.from(testMap.values());
+  }, [assignedTests]);
+
   return (
     <div className="w-full max-w-6xl px-4 space-y-6 sm:space-y-10 flex flex-col items-center text-slate-800 italic uppercase font-black antialiased pb-20">
       
@@ -125,11 +146,7 @@ export const StudentProfile = () => {
           <div className="flex flex-col md:flex-row items-center md:items-end gap-6 sm:gap-10 -mt-12 sm:-mt-20">
             <div className="relative group shrink-0">
                <div className="w-32 h-32 sm:w-44 sm:h-44 bg-slate-800 rounded-[2rem] sm:rounded-[3rem] border-4 sm:border-[6px] border-white shadow-2xl overflow-hidden">
-                  {avatar ? (
-                    <img src={avatar} className="w-full h-full object-cover" alt="Profile" />
-                  ) : (
-                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.login}`} className="w-full h-full" alt="Default Avatar" />
-                  )}
+                  <img src={defaultAvatar} className="w-full h-full object-cover" alt="Profile" />
                </div>
                <button 
                  onClick={() => fileInputRef.current?.click()} 
@@ -173,9 +190,8 @@ export const StudentProfile = () => {
                <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                <span className="text-xs">ЗАГРУЗКА ЗАДАНИЙ...</span>
             </div>
-          ) : assignedTests.length > 0 ? (
-            assignedTests.map((test) => {
-              // ИСПРАВЛЕНО: Мапим переменные в соответствии с реальным логом из консоли DevTools
+          ) : uniqueAssignedTests.length > 0 ? (
+            uniqueAssignedTests.map((test) => {
               const title = test.docxName || 'БЕЗ НАЗВАНИЯ';
               const limit = test.questionLimit || 0;
 

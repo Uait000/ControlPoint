@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User as UserIcon, LayoutGrid, Zap, LogOut, Settings, CheckCircle } from 'lucide-react';
+import { User as UserIcon, LayoutGrid, Zap, LogOut, Settings, CheckCircle, BarChart3, RefreshCw } from 'lucide-react';
 
 import { MainPage } from './pages/MainPage';
 import { TestPage } from './pages/TestPage';
@@ -10,12 +10,16 @@ import { StudentProfile } from './pages/StudentProfile';
 import { SubjectSectionsPage } from './pages/SubjectSectionsPage';
 import { AdminPanel } from './pages/AdminPanel';
 import { RegistrationPage } from './pages/RegistrationPage';
+import { DirectorProfile } from './pages/DirectorProfile';
 import type { User, AuthResponse } from './types';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState<string | null>(null);
+  
+  // Локальное состояние для переключения интерфейса (для преподавателей-помощников)
+  const [activeAssistantMode, setActiveAssistantRole] = useState<'teacher' | 'admin'>('teacher');
 
   useEffect(() => {
     const saved = localStorage.getItem('user_auth');
@@ -23,6 +27,12 @@ export default function App() {
       try { 
         const parsed = JSON.parse(saved);
         setUser(parsed); 
+        
+        // Если зашел ассистент, по умолчанию включаем ему интерфейс админки
+        const rawRole = parsed.accountType || parsed.account_type || "";
+        if (rawRole.toString().toLowerCase() === 'assistantadmin') {
+          setActiveAssistantRole('admin');
+        }
       } catch (e) { 
         localStorage.removeItem('user_auth'); 
       }
@@ -34,6 +44,14 @@ export default function App() {
     localStorage.setItem('token', data.token);
     localStorage.setItem('user_auth', JSON.stringify(data.user));
     setUser(data.user);
+    
+    const rawRole = data.user.accountType || "";
+    if (rawRole.toString().toLowerCase() === 'assistantadmin') {
+      setActiveAssistantRole('admin');
+    } else {
+      setActiveAssistantRole('teacher');
+    }
+
     setNotification(`ДОБРО ПОЖАЛОВАТЬ!`);
     setTimeout(() => setNotification(null), 3000);
   };
@@ -46,22 +64,27 @@ export default function App() {
 
   if (loading) return null;
 
-  const getRole = () => {
+  const getRawRole = () => {
     if (!user) return "";
-    // Поддержка разных форматов именования полей из БД
     const rawRole = (user as any).accountType || (user as any).account_type || "";
     return rawRole.toString().toLowerCase();
   };
 
-  const role = getRole();
+  const rawRole = getRawRole();
   const userLogin = (user?.login || "").toLowerCase();
 
-  const isAdmin = role === 'admin' || userLogin === 'admin';
-  const isTeacher = role === 'teacher';
-  const isStudent = role === 'student' || (!isAdmin && !isTeacher && !!user);
+  // Разграничение ролей
+  const isSystemAdmin = rawRole === 'systemadmin' || userLogin === 'admin';
+  const isAssistantAdmin = rawRole === 'assistantadmin';
+  const isAdmin = isSystemAdmin || (isAssistantAdmin && activeAssistantMode === 'admin');
+  
+  const isTeacher = rawRole === 'teacher' || (isAssistantAdmin && activeAssistantMode === 'teacher');
+  const isDirector = rawRole === 'director';
+  const isStudent = rawRole === 'student' || (!isSystemAdmin && !isAssistantAdmin && !isTeacher && !isDirector && !!user);
 
   const getProfilePath = () => {
-    if (isAdmin) return "/admin";
+    if (isSystemAdmin || (isAssistantAdmin && activeAssistantMode === 'admin')) return "/admin";
+    if (isDirector) return "/director";
     if (isTeacher) return "/teacher";
     return "/student";
   };
@@ -100,12 +123,29 @@ export default function App() {
                 <div className="flex items-center gap-2 sm:gap-4">
                   <NavLink to="/" icon={<LayoutGrid size={18}/>} label="ПРЕДМЕТЫ" />
                   
-                  {/* Кнопка админки видна только админам */}
-                  {isAdmin && (
+                  {/* Кнопка Админки видна Системному Админу и Помощнику в режиме администрирования */}
+                  {(isSystemAdmin || isAssistantAdmin) && (
                     <NavLink to="/admin" icon={<Settings size={18}/>} label="АДМИНКА" />
                   )}
 
+                  {/* Кнопка Аналитики видна Директору и только Системному Админу */}
+                  {(isDirector || isSystemAdmin) && (
+                    <NavLink to="/director" icon={<BarChart3 size={18}/>} label="АНАЛИТИКА" />
+                  )}
+
                   <NavLink to={getProfilePath()} icon={<UserIcon size={18}/>} label="ПРОФИЛЬ" />
+
+                  {/* КНОПКА-ТУМБЛЕР ПЕРЕКЛЮЧЕНИЯ ДЛЯ ПОМОЩНИКОВ */}
+                  {isAssistantAdmin && (
+                    <button
+                      onClick={() => setActiveAssistantRole(prev => prev === 'teacher' ? 'admin' : 'teacher')}
+                      className="flex items-center gap-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border-2 border-purple-200 px-4 py-2 rounded-xl text-[10px] tracking-tighter transition-all font-black"
+                      title="ПЕРЕКЛЮЧИТЬ ИНТЕРФЕЙС РОЛИ"
+                    >
+                      <RefreshCw size={14} className="animate-spin duration-1000" />
+                      <span className="hidden md:inline">РЕЖИМ: {activeAssistantMode === 'teacher' ? 'УЧИТЕЛЬ' : 'ПОМОЩНИК'}</span>
+                    </button>
+                  )}
                   
                   <button 
                     onClick={handleLogout} 
@@ -122,14 +162,19 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<MainPage />} />
                 
-                {/* Защищенные маршруты */}
                 <Route 
                   path="/admin" 
-                  element={isAdmin ? <AdminPanel /> : <Navigate to={getProfilePath()} />} 
+                  element={isSystemAdmin || isAssistantAdmin ? <AdminPanel /> : <Navigate to={getProfilePath()} />} 
                 />
+                
+                <Route 
+                  path="/director" 
+                  element={isDirector || isSystemAdmin ? <DirectorProfile /> : <Navigate to={getProfilePath()} />} 
+                />
+
                 <Route 
                   path="/teacher" 
-                  element={isTeacher ? <TeacherProfile /> : <Navigate to={getProfilePath()} />} 
+                  element={isTeacher || isAssistantAdmin ? <TeacherProfile /> : <Navigate to={getProfilePath()} />} 
                 />
                 <Route 
                   path="/student" 
@@ -138,8 +183,6 @@ export default function App() {
                 
                 <Route path="/subject/:id" element={<SubjectSectionsPage />} />
                 <Route path="/test/:id" element={<TestPage />} />
-                
-                {/* Редирект для всех остальных путей */}
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             </main>

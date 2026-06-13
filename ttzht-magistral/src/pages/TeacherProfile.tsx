@@ -2,10 +2,11 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Users, Plus, Wifi, ChevronDown, X, Database, BookOpen, Award, RefreshCw, Search,
-  BarChart2, Activity 
+  BarChart2, Activity, Printer, ZoomIn, ZoomOut
 } from 'lucide-react';
 import type { Subject, Group, ApiTest, TeacherQuestion, User } from '../types';
 import { API_BASE_URL } from '../api';
+import defaultAvatar from '../assets/avatarka.png';
 
 const getGrade = (percent: any) => {
   const p = Number(percent);
@@ -24,6 +25,7 @@ export const TeacherProfile = () => {
   
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSubject, setFilterSubject] = useState('');
+  const [filterTopic, setFilterTopic] = useState('');
 
   const [localAssignedGroups, setLocalAssignedGroups] = useState<Set<string>>(new Set());
 
@@ -42,6 +44,12 @@ export const TeacherProfile = () => {
   const [selPoolId, setSelPoolId] = useState(''); 
   const [selGrp, setSelGrp] = useState('');
   const [questionCount, setQuestionCount] = useState(15);
+
+  const [isPrintModalOpen, setIsSpecialPrintModalOpen] = useState<boolean>(false);
+  const [printTarget, setPrintTarget] = useState<'all' | 'selected'>('all');
+  const [selectedGroupsForPrint, setSelectedGroupsForPrint] = useState<number[]>([]);
+
+  const [uiScale, setUiScale] = useState<number>(1.0);
 
   const ws = useRef<WebSocket | null>(null);
   const headers = useMemo(() => ({ 
@@ -100,11 +108,12 @@ export const TeacherProfile = () => {
     initializeData();
     const interval = setInterval(initializeData, 1000);
 
-    const connectWS = () => {
-      const wsBaseUrl = API_BASE_URL 
-          ? API_BASE_URL.replace('http', 'ws') 
-          : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
+ const connectWS = () => {
+      // Так как API_BASE_URL пустой, мы сразу нативно строим путь через window.location
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsBaseUrl = `${wsProtocol}//${window.location.host}`;
           
+      // Формируем итоговую строку подключения с токеном авторизации
       const wsUrl = `${wsBaseUrl}/test/ws/monitor?token=${localStorage.getItem('token')}`;
       
       ws.current = new WebSocket(wsUrl);
@@ -119,7 +128,6 @@ export const TeacherProfile = () => {
                   const currentStudent = prev[studentId] || { activeTopic: '' };
                   const activeTopic = currentStudent.activeTopic;
                   
-                  // Сохраняем данные индивидуально под каждую тему
                   if (type === 'topic') {
                       const newTopic = rest.join(':');
                       return { 
@@ -138,7 +146,6 @@ export const TeacherProfile = () => {
                       if (type === 'progress') return { ...prev, [studentId]: { ...currentStudent, [activeTopic]: { ...topicData, progress: rest[0] } } };
                       if (type === 'status') return { ...prev, [studentId]: { ...currentStudent, [activeTopic]: { ...topicData, status: rest[0] } } };
                   } else {
-                      // Фолбек, если тема не была передана (старое поведение)
                       if (type === 'finish') return { ...prev, [studentId]: { ...currentStudent, status: 'Finished', score: rest[0], percent: rest[1] } };
                       if (type === 'progress') return { ...prev, [studentId]: { ...currentStudent, progress: rest[0] } };
                       if (type === 'status') return { ...prev, [studentId]: { ...currentStudent, status: rest[0] } };
@@ -157,6 +164,10 @@ export const TeacherProfile = () => {
         ws.current?.close();
     };
   }, [headers]);
+
+  useEffect(() => {
+    setFilterTopic('');
+  }, [filterSubject]);
 
   const visibleGroups = useMemo(() => {
     const currentTeacherId = String(currentUser?.id || '');
@@ -188,7 +199,6 @@ export const TeacherProfile = () => {
   const getGroupData = useCallback((groupId: number) => {
     const groupStudents = students.filter(s => String(s.belongsTo || s.belongs_to) === String(groupId));
     
-    // Получаем все назначенные тесты для данной группы от текущего преподавателя
     const assignedTests = availableTests.filter(t => 
        String(t.assignedGroupId) === String(groupId) && 
        String(t.teacherId) === String(currentUser?.id)
@@ -196,7 +206,6 @@ export const TeacherProfile = () => {
     
     const topics = new Set(assignedTests.map(t => t.docxName));
 
-    // Добавляем темы, в которых была активность, даже если они не в списке назначенных
     groupStudents.forEach(s => {
         const mon = liveMonitor[s.id];
         if (mon) {
@@ -251,7 +260,6 @@ export const TeacherProfile = () => {
           if (q) {
               const topicLower = topic.toLowerCase();
               if (!groupNameStr.includes(q) && !topicLower.includes(q) && !subjectName.includes(q)) {
-                  // Поиск по ФИО студентов
                   const hasStudentMatch = studentsList.some((s: any) => 
                       (`${s.secondName || s.second_name || ''} ${s.firstName || s.first_name || s.login}`).toLowerCase().includes(q)
                   );
@@ -270,6 +278,25 @@ export const TeacherProfile = () => {
         return Object.keys(filteredData).length > 0;
     });
   }, [visibleGroups, getFilteredGroupData]);
+
+  const uniqueTopicsList = useMemo(() => {
+    const list = new Set<string>();
+    visibleGroups.forEach(group => {
+      const grpData = getGroupData(group.id);
+      Object.keys(grpData).forEach(topic => {
+        if (topic === "СПИСОК ГРУППЫ (ТЕСТ НЕ НАЧАТ)") return;
+        if (filterSubject) {
+          const studentTest = availableTests.find(t => t.docxName === topic);
+          if (studentTest && String(studentTest.belongsTo) === filterSubject) {
+            list.add(topic);
+          }
+        } else {
+          list.add(topic);
+        }
+      });
+    });
+    return Array.from(list).sort((a, b) => a.localeCompare(b));
+  }, [visibleGroups, getGroupData, filterSubject, availableTests]);
 
   const getUniquePools = (subjectId: string) => {
     if (!subjectId) return [];
@@ -298,9 +325,9 @@ export const TeacherProfile = () => {
     displayedGroups.forEach(group => {
         const grpData = getFilteredGroupData(group.id);
 
-        // Итерация по каждому отдельному тесту (теме) в рамках группы
         Object.entries(grpData).forEach(([topic, studentsList]) => {
             if (topic === "СПИСОК ГРУППЫ (ТЕСТ НЕ НАЧАТ)") return;
+            if (filterTopic && topic !== filterTopic) return;
 
             let gScore = 0;
             let gCount = 0;
@@ -315,7 +342,6 @@ export const TeacherProfile = () => {
                     if (grade === 3) { total3++; g3++; }
                     if (grade === 2) { total2++; g2++; }
 
-                    // Реализуем базовую формулу: суммируем именно оценки
                     gScore += grade;
                     gCount++;
                 }
@@ -325,7 +351,7 @@ export const TeacherProfile = () => {
                 groupStats.push({
                     name: `${group.name}-${group.course}-${group.number}`,
                     topic: topic,
-                    avg: Number((gScore / gCount).toFixed(2)), // Средний балл (Сумма оценок / Количество оценок)
+                    avg: Number((gScore / gCount).toFixed(2)),
                     counts: { 5: g5, 4: g4, 3: g3, 2: g2 }
                 });
             }
@@ -333,7 +359,7 @@ export const TeacherProfile = () => {
     });
 
     return { total5, total4, total3, total2, totalFinished: total5 + total4 + total3 + total2, groupStats };
-  }, [displayedGroups, getFilteredGroupData]);
+  }, [displayedGroups, getFilteredGroupData, filterTopic]);
 
   const loadInspectorQuestions = async (poolId: string) => {
     setInspectedPool(poolId);
@@ -457,49 +483,207 @@ export const TeacherProfile = () => {
     }
   };
 
+  const handleExecutePrint = () => {
+    setIsSpecialPrintModalOpen(false);
+
+    const targetGroups = printTarget === 'all' 
+      ? displayedGroups 
+      : displayedGroups.filter(g => selectedGroupsForPrint.includes(g.id));
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (!doc) return;
+
+    let htmlContent = `
+      <html>
+      <head>
+        <title>Ведомость Успеваемости ТТЖТ</title>
+        <style>
+          body { font-family: sans-serif; color: #000000; padding: 20px; line-height: 1.4; }
+          .header { text-align: center; border-bottom: 3px solid #000000; padding-bottom: 12px; margin-bottom: 25px; }
+          .header h1 { font-size: 18px; margin: 0; font-weight: 900; text-transform: uppercase; color: #000000; }
+          .header h2 { font-size: 13px; margin: 6px 0 0 0; font-weight: 800; color: #111111; text-transform: uppercase; }
+          .section-title { font-size: 14px; font-weight: 900; text-transform: uppercase; border-bottom: 2.5px solid #000000; padding-bottom: 4px; margin-top: 30px; margin-bottom: 15px; color: #000000; }
+          table { width: 100%; border-collapse: collapse; margin-top: 12px; margin-bottom: 30px; page-break-inside: auto; }
+          tr { page-break-inside: avoid; }
+          th, td { border: 2px solid #000000; padding: 10px; font-size: 12px; text-align: left; color: #000000; }
+          th { background-color: #f8fafc; font-weight: 900; text-transform: uppercase; }
+          td.center { text-align: center; font-weight: 900; }
+          .footer-signatures { margin-top: 60px; display: flex; justify-content: space-between; font-size: 12px; font-weight: 900; color: #000000; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>ТИХОРЕЦКИЙ ТЕХНИКУМ ЖЕЛЕЗНОДОРОЖНОГО ТРАНСПОРТА (ТТЖТ)</h1>
+          <h2>АТТЕСТАЦИОННАЯ ВЕДОМОСТЬ РЕЗУЛЬТАТОВ МОНИТОРИНГА ЗНАНИЙ</h2>
+          <p style="font-size: 11px; margin-top: 5px; font-weight: 700;">Преподаватель: ${teacherDisplayName.toUpperCase()}</p>
+        </div>
+    `;
+
+    targetGroups.forEach(group => {
+      const filteredData = getFilteredGroupData(group.id);
+
+      Object.entries(filteredData).forEach(([topicName, studentsList]) => {
+        if (filterTopic && topicName !== filterTopic) return;
+        const testObj = availableTests.find(t => t.docxName === topicName);
+        const subjId = testObj ? String(testObj.belongsTo) : '';
+        const subjObj = courses.find(c => String(c.id) === subjId);
+        const subjectDisplay = subjObj ? subjObj.title : 'НЕИЗВЕСТНАЯ ДИСЦИПЛИНА';
+
+        htmlContent += `
+          <div class="section-title">ГРУППА: ${group.name}-${group.course}-${group.number} • ${subjectDisplay.toUpperCase()}</div>
+          <p style="font-size: 11px; font-weight: 700; margin-top: -10px; margin-bottom: 10px;">Раздел/Тема: ${topicName}</p>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 50%;">ФИО Студента</th>
+                <th class="center" style="width: 25%;">Текущий статус</th>
+                <th class="center" style="width: 25%;">Оценка / Процент</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+
+        const sortedStudents = [...(studentsList as any[])].sort((a, b) => {
+          const nameA = `${a.secondName || a.second_name || ''} ${a.firstName || a.first_name || ''}`.trim();
+          const nameB = `${b.secondName || b.second_name || ''} ${b.firstName || b.first_name || ''}`.trim();
+          return nameA.localeCompare(nameB);
+        });
+
+        sortedStudents.forEach(student => {
+          const mData = student._monitor || {};
+          const isFinished = mData.status === 'Finished';
+          const gradeInfo = isFinished ? getGrade(mData.percent) : null;
+          
+          let resultDisplay = '—';
+          if (isFinished) {
+            resultDisplay = `${gradeInfo?.val} (${gradeInfo?.label}) — ${mData.percent}%`;
+          } else if (mData.progress !== undefined) {
+            resultDisplay = `В процессе: ${mData.progress}%`;
+          }
+
+          let statusLabel = 'OFFLINE';
+          if (mData.status === 'Online') statusLabel = 'В СЕТИ';
+          if (mData.status === 'Finished') statusLabel = 'ЗАВЕРШЕНО';
+          if (mData.status === 'Blocked') statusLabel = 'НАРУШЕНИЕ';
+          if (mData.status === 'TabFocussedOut') statusLabel = 'ПОКИНУЛ ОКНО';
+
+          htmlContent += `
+            <tr>
+              <td><strong>${(student.secondName || student.second_name || '').toUpperCase()} ${student.firstName || student.first_name || student.login}</strong></td>
+              <td class="center">${statusLabel}</td>
+              <td class="center">${resultDisplay}</td>
+            </tr>
+          `;
+        });
+
+        htmlContent += `
+            </tbody>
+          </table>
+        `;
+      });
+    });
+
+    htmlContent += `
+        <div class="footer-signatures">
+          <div>Преподаватель: ___________________</div>
+          <div>Зав. отделением: ___________________</div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+
+    iframe.contentWindow?.focus();
+    setTimeout(() => {
+      iframe.contentWindow?.print();
+      setTimeout(() => { document.body.removeChild(iframe); }, 1000);
+    }, 500);
+  };
+
+  const toggleGroupPrintSelection = (id: number) => {
+    setSelectedGroupsForPrint(prev => 
+      prev.includes(id) ? prev.filter(gId => gId !== id) : [...prev, id]
+    );
+  };
+
   const teacherDisplayName = currentUser?.login || currentUser?.name || currentUser?.username || 'ПРЕПОДАВАТЕЛЬ';
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 space-y-6 pb-20 text-sm font-bold antialiased italic uppercase text-slate-700">
+    <div 
+      className="w-full max-w-7xl mx-auto px-4 sm:px-6 space-y-6 pb-20 text-sm font-bold antialiased italic uppercase text-slate-700 transition-all origin-top select-none"
+      style={{ zoom: uiScale }}
+    >
       
-      {/* HEADER */}
+{/* HEADER */}
       <div className="bg-white p-6 sm:p-10 rounded-[3rem] shadow-xl border border-[#e1eefb] flex flex-col lg:flex-row items-center gap-8">
         <div className="relative">
           <div className="w-32 h-32 bg-slate-900 rounded-[2.5rem] border-8 border-blue-50 overflow-hidden shadow-2xl">
-             <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${teacherDisplayName}`} alt="avatar" />
+             <img src={defaultAvatar} alt="avatar" />
           </div>
           <div className="absolute -bottom-2 -right-2 bg-green-500 p-3 rounded-2xl text-white shadow-lg border-4 border-white">
             <Wifi size={20} className={ws.current?.readyState === 1 ? "animate-pulse" : "opacity-30"} />
           </div>
         </div>
+
         <div className="text-center lg:text-left flex-1">
           <div className="inline-block bg-[#e3f2fd] text-[#1976d2] px-4 py-1 rounded-full text-[10px] font-black mb-4 tracking-widest uppercase">ТТЖТ • ПУЛЬТ ПРЕПОДАВАТЕЛЯ</div>
           <h1 className="text-3xl sm:text-5xl font-black text-[#1565c0] tracking-tighter mb-2 italic leading-none">
             {teacherDisplayName.toUpperCase()}
           </h1>
+          
           <div className="flex flex-wrap gap-4 mt-6 justify-center lg:justify-start">
             <button onClick={() => setShowCreateModal(true)} className="bg-[#1976d2] text-white px-8 py-5 rounded-2xl shadow-xl flex items-center gap-3 hover:bg-[#1565c0] active:scale-95 transition-all border-b-4 border-blue-800"><Plus size={24}/> НАЗНАЧИТЬ ТЕСТ</button>
             <button onClick={() => setShowInspector(true)} className="bg-orange-500 text-white px-8 py-5 rounded-2xl shadow-xl flex items-center gap-3 hover:bg-orange-600 active:scale-95 transition-all border-b-4 border-orange-800"><Search size={24}/> ИНСПЕКТОР БАЗЫ</button>
+            <button onClick={() => setIsSpecialPrintModalOpen(true)} className="bg-emerald-600 text-white px-8 py-5 rounded-2xl shadow-xl flex items-center gap-3 hover:bg-emerald-700 active:scale-95 transition-all border-b-4 border-emerald-800"><Printer size={24}/> ПЕЧАТЬ ОТЧЁТА</button>
+            
+            {/* ТУМБЛЕР ПЕРЕКЛЮЧЕНИЯ РОЛИ - ВСТРОЕН В ОБЩИЙ БЛОК КНОПОК */}
+            {currentUser?.accountType === 'AssistantAdmin' && (
+              <button 
+                onClick={() => {
+                  window.location.href = window.location.href.includes('teacher') ? '/#/admin' : '/#/teacher';
+                }}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-5 rounded-2xl shadow-xl flex items-center gap-3 font-black uppercase text-sm italic transition-all active:scale-95 border-b-4 border-purple-800"
+              >
+                <RefreshCw size={20} className="animate-spin duration-1000" />
+                АДМИНИСТРИРОВАНИЕ
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* ПАНЕЛЬ ФИЛЬТРОВ И ВКЛАДОК */}
+      {/* ПАНЕЛЬ ФИЛЬТРОВ И ВКЛАДОК + ИНСТРУМЕНТ МАСШТАБА */}
       <div className="flex flex-col xl:flex-row justify-between items-center gap-4 bg-white p-3 rounded-[2.5rem] shadow-md border-2 border-slate-100">
-          <div className="flex gap-2 w-full xl:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
              <button onClick={() => setActiveTab('monitoring')} className={`flex-1 xl:flex-none px-6 py-4 rounded-2xl flex justify-center items-center gap-3 transition-all text-sm font-black tracking-widest ${activeTab === 'monitoring' ? 'bg-blue-50 text-blue-700 shadow-inner border-2 border-blue-200' : 'text-slate-400 hover:text-slate-600 border-2 border-transparent hover:bg-slate-50'}`}>
                 <Activity size={22} /> МОНИТОРИНГ
              </button>
              <button onClick={() => setActiveTab('analytics')} className={`flex-1 xl:flex-none px-6 py-4 rounded-2xl flex justify-center items-center gap-3 transition-all text-sm font-black tracking-widest ${activeTab === 'analytics' ? 'bg-blue-50 text-blue-700 shadow-inner border-2 border-blue-200' : 'text-slate-400 hover:text-slate-600 border-2 border-transparent hover:bg-slate-50'}`}>
                 <BarChart2 size={22} /> АНАЛИТИКА
              </button>
+             
+             <div className="flex items-center bg-slate-50 border-2 border-slate-100 rounded-2xl overflow-hidden h-[48px] ml-0 xl:ml-2">
+                <button onClick={() => setUiScale(prev => Math.max(0.7, prev - 0.1))} className="p-3 hover:bg-slate-200 text-slate-400 transition-colors"><ZoomOut size={16} /></button>
+                <span className="w-14 text-center text-xs font-black text-slate-500 bg-white py-2">{Math.round(uiScale * 100)}%</span>
+                <button onClick={() => setUiScale(prev => Math.min(1.5, prev + 0.1))} className="p-3 hover:bg-slate-200 text-slate-400 transition-colors"><ZoomIn size={16} /></button>
+             </div>
           </div>
           
           <div className="flex flex-col md:flex-row gap-3 w-full xl:w-auto">
              <select 
                 value={filterSubject}
                 onChange={(e) => setFilterSubject(e.target.value)}
-                className="w-full md:w-64 px-5 py-4 bg-slate-50 border-2 border-blue-100 rounded-2xl text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:bg-white transition-all uppercase shadow-inner cursor-pointer"
+                className="w-full md:w-48 px-5 py-4 bg-slate-50 border-2 border-blue-100 rounded-2xl text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:bg-white transition-all uppercase shadow-inner cursor-pointer"
              >
                 <option value="">🏫 ВСЕ ПРЕДМЕТЫ</option>
                 {courses.slice().sort((a,b) => a.title.localeCompare(b.title)).map(c => (
@@ -507,11 +691,22 @@ export const TeacherProfile = () => {
                 ))}
              </select>
 
-             <div className="w-full md:w-[350px] relative">
+             <select 
+                value={filterTopic}
+                onChange={(e) => setFilterTopic(e.target.value)}
+                className="w-full md:w-56 px-5 py-4 bg-slate-50 border-2 border-blue-100 rounded-2xl text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:bg-white transition-all uppercase shadow-inner cursor-pointer"
+             >
+                <option value="">📝 ВСЕ ТЕМЫ</option>
+                {uniqueTopicsList.map(topic => (
+                    <option key={topic} value={topic}>{topic}</option>
+                ))}
+             </select>
+
+             <div className="w-full md:w-64 relative">
                 <Search size={22} className="absolute left-5 top-1/2 -translate-y-1/2 text-blue-500" />
                 <input 
                     type="text" 
-                    placeholder="ПОИСК: ГРУППА ИЛИ РАЗДЕЛ..." 
+                    placeholder="ПОИСК СТУДЕНТА..." 
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full pl-14 pr-10 py-4 bg-slate-50 border-2 border-blue-100 rounded-2xl text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:bg-white transition-all uppercase placeholder-slate-400 shadow-inner"
@@ -557,7 +752,8 @@ export const TeacherProfile = () => {
                         return a[0].localeCompare(b[0]);
                       })
                       .map(([topicName, studentsList]) => {
-                        
+                        if (filterTopic && topicName !== filterTopic && topicName !== "СПИСОК ГРУППЫ (ТЕСТ НЕ НАЧАТ)") return null;
+
                         const testObj = availableTests.find(t => t.docxName === topicName);
                         const subjId = testObj ? String(testObj.belongsTo) : '';
                         const subjObj = courses.find(c => String(c.id) === subjId);
@@ -706,7 +902,6 @@ export const TeacherProfile = () => {
                                 <div className="w-full h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner">
                                     <motion.div 
                                         initial={{ width: 0 }} 
-                                        // Ограничиваем прогресс 5 баллами (от 0 до 100%)
                                         animate={{ width: `${(stat.avg / 5) * 100}%` }} 
                                         className="h-full bg-gradient-to-r from-blue-600 to-blue-400" 
                                     />
@@ -886,6 +1081,48 @@ export const TeacherProfile = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {/* МОДАЛКА: НАСТРОЙКА ПЕЧАТИ ВЕДОМОСТЕЙ ПРЕПОДАВАТЕЛЯ */}
+      <AnimatePresence>
+        {isPrintModalOpen && (
+          <div className="fixed inset-0 z-[1100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-[2.5rem] p-6 md:p-8 border-4 border-white shadow-2xl w-full max-w-xl text-slate-700 space-y-6 max-h-[85vh] overflow-y-auto">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Printer className="text-blue-600" size={20}/> НАСТРОЙКА ПЕЧАТИ ВЕДОМОСТЕЙ</h3>
+                <button onClick={() => setIsSpecialPrintModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 rounded-xl bg-slate-50"><X size={18}/></button>
+              </div>
+
+              <div className="space-y-4 bg-slate-50 p-5 rounded-2xl border border-slate-200/60">
+                <div className="text-xs text-blue-600 block tracking-wider font-black">ВЫБЕРИТЕ ОБЪЕКТЫ ЭКСПОРТА:</div>
+                <div className="space-y-3 text-xs">
+                  <label className="flex items-center gap-3 cursor-pointer select-none">
+                    <input type="radio" checked={printTarget === 'all'} onChange={() => setPrintTarget('all')} className="w-4 h-4 text-blue-600" />
+                    <span>ВСЕ АКТИВНЫЕ ГРУППЫ СРЕЗА ({displayedGroups.length})</span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer select-none">
+                    <input type="radio" checked={printTarget === 'selected'} onChange={() => setPrintTarget('selected')} className="w-4 h-4 text-blue-600" />
+                    <span>ВЫБОРОЧНЫЕ АКАДЕМИЧЕСКИЕ ГРУППЫ</span>
+                  </label>
+                </div>
+
+                {printTarget === 'selected' && (
+                  <div className="pt-2 border-t border-slate-200 space-y-2 max-h-44 overflow-y-auto pr-1">
+                    {displayedGroups.map(g => (
+                      <label key={g.id} className="flex items-center gap-2.5 text-[11px] font-bold text-slate-600 cursor-pointer">
+                        <input type="checkbox" checked={selectedGroupsForPrint.includes(g.id)} onChange={() => toggleGroupPrintSelection(g.id)} className="rounded text-blue-600" />
+                        <span>ГРУППА {g.name}-{g.course}-{g.number}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button onClick={handleExecutePrint} className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-sm tracking-wide shadow-xl transition-all flex items-center justify-center gap-2"><Printer size={18}/> СФОРМИРОВАТЬ ПЕЧАТНЫЙ БЛАНК</button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 };
