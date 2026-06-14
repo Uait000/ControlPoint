@@ -396,7 +396,7 @@ export const TeacherProfile = () => {
     }
   };
 
-  const handleOptionChange = async (qId: number, newCorrectIdx: number) => {
+ const handleOptionChange = async (qId: number, newCorrectIdx: number) => {
     const question = reviewQuestions.find(q => q.id === qId);
     if (!question) return;
 
@@ -416,20 +416,32 @@ export const TeacherProfile = () => {
     };
 
     try {
-        const res = await fetch(API_BASE_URL +`/questions/${qId}`, {
+        const res = await fetch(API_BASE_URL + `/questions/${qId}`, {
             method: 'PATCH',
             headers,
             body: JSON.stringify(payload)
         });
 
-        if (!res.ok) {
+        if (res.ok) {
+            setReviewQuestions(prev => prev.map(q => 
+                q.id === qId ? { ...q, modifiedBy: currentUser?.name || '' } : q
+            ));
+        } else {
              const errorData = await res.json();
              alert(`ОШИБКА СЕРВЕРА: ${errorData.message}`);
+             loadInspectorQuestions(inspectedPool);
         }
     } catch (e) {
         console.error("Ошибка сети", e);
+        loadInspectorQuestions(inspectedPool);
     }
-    loadInspectorQuestions(inspectedPool);
+
+    setTimeout(() => {
+      const element = document.getElementById(`question-box-${qId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 50);
   };
 
   const handleAssignTest = async () => {
@@ -942,7 +954,7 @@ export const TeacherProfile = () => {
       )}
 
       {/* МОДАЛКА: ИНСПЕКТОР */}
-      <AnimatePresence>
+<AnimatePresence>
         {showInspector && (
           <div className="fixed inset-0 z-[1100] bg-slate-900/90 backdrop-blur-2xl flex items-center justify-center p-4">
             <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }} className="bg-white w-full max-w-6xl h-[90vh] rounded-[4rem] shadow-2xl flex flex-col overflow-hidden border-8 border-white/50">
@@ -982,7 +994,11 @@ export const TeacherProfile = () => {
                     )}
 
                     {!isLoadingQuestions && reviewQuestions.map((q, qIdx) => (
-                        <div key={q.id} className="bg-white p-10 rounded-[3rem] border-4 border-slate-100 space-y-8 relative shadow-sm hover:border-orange-200 transition-colors">
+                        <div 
+                          key={q.id} 
+                          id={`question-box-${q.id}`}
+                          className="bg-white p-10 rounded-[3rem] border-4 border-slate-100 space-y-8 relative shadow-sm hover:border-orange-200 transition-colors"
+                        >
                             <div className="flex justify-between items-center">
                                 <span className="bg-slate-900 text-white px-6 py-2 rounded-2xl text-[12px] font-black italic tracking-widest">ВОПРОС №{qIdx + 1}</span>
                                 {q.modifiedBy && (

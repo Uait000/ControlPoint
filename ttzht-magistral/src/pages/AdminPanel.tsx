@@ -3,7 +3,7 @@ import {
   Plus, Upload, FolderPlus, Trash2, Eye, EyeOff, ChevronDown, FileText, 
   Cpu, Zap, ShieldCheck, BookOpen, Layout, Code, Atom, Calculator, 
   FlaskConical, Globe, HardDrive, Terminal, Settings, Database, Activity, 
-  UserPlus, X, ZoomIn, ZoomOut, Search, Check, RefreshCw 
+  UserPlus, X, ZoomIn, ZoomOut, Search, Check, RefreshCw, Printer 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Subject } from '../types';
@@ -29,16 +29,16 @@ export const AdminPanel = () => {
   const [expandedSubjectId, setExpandedSubjectId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   
-  // Управление модалкой и ролями
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [adminRole, setAdminRole] = useState<'SystemAdmin' | 'AssistantAdmin' | null>(null);
   
-  // Поля формы назначения помощника
   const [selectedTeacherId, setSelectedTeacherId] = useState<number | null>(null);
   const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
   const [masterKey, setMasterKey] = useState('');
 
-  // Состояния кастомного выпадающего списка учителей
+  const [selectedTeacherIds, setSelectedTeacherIds] = useState<number[]>([]);
+  const [isResettingBulk, setIsResettingBulk] = useState(false);
+
   const [isTeacherDropdownOpen, setIsTeacherDropdownOpen] = useState(false);
   const [teacherSearchQuery, setTeacherSearchQuery] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -281,79 +281,181 @@ export const AdminPanel = () => {
     }
   };
 
-  const handleForceResetPassword = async (teacherId: number, teacherName: string) => {
-    if (!window.confirm(`СБРОСИТЬ СИСТЕМНЫЙ ПАРОЛЬ ДЛЯ СОТРУДНИКА: ${teacherName.toUpperCase()}?`)) return;
+  const handleForceResetPasswordBulk = async () => {
+    if (selectedTeacherIds.length === 0) {
+      return alert("НЕ ВЫБРАН НИ ОДИН СОТРУДНИК ДЛЯ СБРОСА");
+    }
 
+    if (!window.confirm(`ВЫБРАНО СОТРУДНИКОВ ДЛЯ СБРОСА: ${selectedTeacherIds.length}. ПРОДОЛЖИТЬ ОПЕРАЦИЮ?`)) return;
+
+    setIsResettingBulk(true);
     try {
-      const res = await fetch(API_BASE_URL + '/auth/admin-force-reset', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ teacher_id: teacherId })
-      });
+      const results: { name: string; login: string; temporaryPassword: string }[] = [];
+      
+      for (const tId of selectedTeacherIds) {
+        let tName = "ПРЕПОДАВАТЕЛЬ ТТЖТ";
+        if (tId === 0) {
+          tName = "ДИРЕКТОР ТТЖТ";
+        } else {
+          const match = dbTeachers.find(t => (t.teacher_id ?? t.id) === tId);
+          if (match) tName = match.name;
+        }
 
-      if (res.ok) {
-        const data = await res.json();
-        alert(`ПАРОЛЬ УСПЕШНО СБРОШЕН! СЕЙЧАС ОТКРОЕТСЯ ИНТЕРФЕЙС ПЕЧАТИ.`);
+        try {
+          const res = await fetch(API_BASE_URL + '/auth/admin-force-reset', {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ teacher_id: tId })
+          });
 
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
-        iframe.style.border = 'none';
-        document.body.appendChild(iframe);
+          if (res.ok) {
+            const data = await res.json();
+            results.push({
+              name: tName,
+              login: data.login,
+              temporaryPassword: data.temporaryPassword
+            });
+          }
+        } catch (innerError) {
+          console.error(`Ошибка сброса для ID ${tId}:`, innerError);
+        }
+      }
 
-        const doc = iframe.contentWindow?.document || iframe.contentDocument;
-        if (!doc) return;
-
-        const htmlContent = `
-          <html>
-          <head>
-            <title>Учетные данные ТТЖТ</title>
-            <style>
-              body { font-family: sans-serif; color: #000000; padding: 40px; line-height: 1.5; }
-              .border-box { border: 4px double #000000; padding: 30px; border-radius: 20px; max-width: 600px; margin: 0 auto; }
-              h1 { font-size: 16px; text-align: center; font-weight: 900; text-transform: uppercase; margin-bottom: 25px; border-bottom: 2px solid #000000; padding-bottom: 10px; }
-              .field { font-size: 14px; margin-bottom: 15px; font-weight: bold; }
-              .val { font-family: monospace; font-size: 22px; font-weight: 900; background-color: #f1f5f9; padding: 4px 12px; border-radius: 6px; border: 1px solid #cbd5e1; }
-              .warn { font-size: 11px; margin-top: 30px; border-top: 2px dashed #000000; padding-top: 15px; text-transform: uppercase; font-weight: 900; }
-              .signatures { margin-top: 50px; display: flex; justify-content: space-between; font-size: 12px; font-weight: bold; }
-            </style>
-          </head>
-          <body>
-            <div class="border-box">
-              <h1>ТИХОРЕЦКИЙ ТЕХНИКУМ ЖЕЛЕЗНОДОРОЖНОГО ТРАНСПОРТА (ТТЖТ)<br>КАРТА ОПЕРАТИВНОГО ВОССТАНОВЛЕНИЯ ДОСТУПА</h1>
-              <div class="field">ФИО СОТРУДНИКА: <span style="text-transform: uppercase;">${teacherName}</span></div>
-              <div class="field">ЛОГИН ДЛЯ ВХОДА В СИСТЕМУ: <span class="val">${data.login}</span></div>
-              <div class="field">НОВЫЙ СГЕНЕРИРОВАННЫЙ ПАРОЛЬ: <span class="val">${data.temporaryPassword}</span></div>
-              <p class="warn">ВНИМАНИЕ: Данные сгенерированы главным администратором базы данных. Пароль является действующим с момента формирования бланка.</p>
-              <div class="signatures">
-                <div>Администратор: _________________</div>
-                <div>Сотрудник: _________________</div>
-              </div>
-            </div>
-          </body>
-          </html>
-        `;
-
-        doc.open();
-        doc.write(htmlContent);
-        doc.close();
-
-        iframe.contentWindow?.focus();
-        setTimeout(() => {
-          iframe.contentWindow?.print();
-          setTimeout(() => { document.body.removeChild(iframe); }, 1000);
-        }, 500);
-
+      if (results.length > 0) {
+        alert(`УСПЕШНО СБРОШЕНО КЛЮЧЕЙ: ${results.length}. СГЕНЕРИРОВАНЫ КАРТЫ ВОССТАНОВЛЕНИЯ ДОСТУПА.`);
+        printCards(results);
+        setSelectedTeacherIds([]);
       } else {
-        alert("ОШИБКА ДОСТУПА: Недостаточно прав для выполнения операции сброса.");
+        alert("ОШИБКА: Не удалось выполнить сброс ни для одного выбранного аккаунта.");
       }
     } catch (e) {
-      alert("ОШИБКА СВЯЗИ С СЕРВЕРОМ БАЗЫ ДАННЫХ");
+      alert("КРИТИЧЕСКАЯ ОШИБКА ПРИ МАССОВОМ СБРОСЕ ПАРОЛЕЙ");
+    } finally {
+      setIsResettingBulk(false);
     }
+  };
+
+  const printCards = (cards: { name: string; login: string; temporaryPassword: string }[]) => {
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (!doc) return;
+
+    let tableRows = '';
+    cards.forEach((card, idx) => {
+      tableRows += `
+        <tr>
+          <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
+          <td style="font-weight: 800; text-transform: uppercase;">${card.name}</td>
+          <td class="mono">${card.login}</td>
+          <td class="mono-pass">${card.temporaryPassword}</td>
+          <td class="signature-cell"></td>
+        </tr>
+      `;
+    });
+
+    const htmlContent = `
+      <html>
+      <head>
+        <title>Ведомость учетных данных ТТЖТ</title>
+        <style>
+          @page { size: A4 portrait; margin: 15mm 10mm 15mm 10mm; }
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #0f172a; margin: 0; padding: 0; background-color: #ffffff; }
+          .header-container { text-align: center; margin-bottom: 30px; border-bottom: 4px double #0f172a; padding-bottom: 15px; }
+          h1 { font-size: 18px; font-weight: 800; text-transform: uppercase; margin: 0 0 8px 0; color: #0f172a; }
+          h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; margin: 0; color: #475569; letter-spacing: 0.5px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; page-break-inside: auto; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
+          th { background-color: #f1f5f9; color: #0f172a; font-weight: 800; text-transform: uppercase; font-size: 11px; border: 2px solid #0f172a; padding: 10px 6px; }
+          td { border: 2px solid #0f172a; padding: 12px 8px; font-size: 13px; vertical-align: middle; }
+          .mono { font-family: "Courier New", Courier, monospace; font-weight: 700; font-size: 14px; }
+          .mono-pass { font-family: "Courier New", Courier, monospace; font-weight: 900; font-size: 16px; background-color: #f8fafc; text-align: center; letter-spacing: 0.5px; }
+          .signature-cell { width: 110px; }
+          .footer { margin-top: 35px; display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; color: #334155; }
+          .warn-text { font-size: 10px; color: #64748b; font-weight: 600; text-transform: uppercase; margin-top: 25px; line-height: 1.4; border-top: 1px dashed #cbd5e1; padding-top: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="header-container">
+          <h1>ТИХОРЕЦКИЙ ТЕХНИКУМ ЖЕЛЕЗНОДОРОЖНОГО ТРАНСПОРТА (ТТЖТ)</h1>
+          <h2>РЕЕСТР-ВЕДОМОСТЬ ОПЕРАТИВНОГО ВОССТАНОВЛЕНИЯ ДОСТУПА К СИСТЕМЕ «МАГИСТРАЛЬ»</h2>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 5%;">№</th>
+              <th style="width: 45%;">ФИО сотрудника</th>
+              <th style="width: 18%;">Логин</th>
+              <th style="width: 17%;">Новый пароль</th>
+              <th style="width: 15%;">Подпись</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows}
+          </tbody>
+        </table>
+        <div class="footer">
+          <div>Ответственный администратор БД: _________________</div>
+          <div>Дата формирования: ${new Date().toLocaleDateString('ru-RU')} г.</div>
+        </div>
+        <p class="warn-text">Важно: Настоящая ведомость содержит конфиденциальные данные. После передачи паролей сотрудникам под роспись, данный документ подлежит хранению в установленном внутренним регламентом ТТЖТ порядке.</p>
+      </body>
+      </html>
+    `;
+
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+
+    iframe.contentWindow?.focus();
+    setTimeout(() => {
+      iframe.contentWindow?.print();
+      setTimeout(() => { document.body.removeChild(iframe); }, 1000);
+    }, 500);
+  };
+
+  const printStaticTemplate = async (fileName: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/templates/${fileName}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      
+      if (!res.ok) throw new Error();
+      const htmlText = await res.text();
+
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = 'none';
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentWindow?.document || iframe.contentDocument;
+      if (!doc) return;
+
+      doc.open();
+      doc.write(htmlText);
+      doc.close();
+
+      iframe.contentWindow?.focus();
+      setTimeout(() => {
+        iframe.contentWindow?.print();
+        setTimeout(() => { document.body.removeChild(iframe); }, 1000);
+      }, 400);
+    } catch (e) {
+      alert(`ОШИБКА ПЕЧАТИ ШАБЛОНА: Файл ${fileName} отсутствует на сервере.`);
+    }
+  };
+
+  const toggleTeacherSelection = (tId: number) => {
+    setSelectedTeacherIds(prev => 
+      prev.includes(tId) ? prev.filter(id => id !== tId) : [...prev, tId]
+    );
   };
 
   const filteredTeachers = dbTeachers.filter(t => 
@@ -368,7 +470,6 @@ export const AdminPanel = () => {
       style={{ zoom: uiScale }}
     >
       
-      {/* ШАПКА С КОНТРОЛЛЕРОМ МАСШТАБА */}
       <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-6 md:p-10 rounded-3xl md:rounded-[2.5rem] shadow-sm border border-blue-50 gap-6">
         <div className="text-center sm:text-left flex-1">
           <h2 className="text-3xl md:text-5xl text-[#1565c0] tracking-tighter leading-none">ПАНЕЛЬ УПРАВЛЕНИЯ</h2>
@@ -385,7 +486,6 @@ export const AdminPanel = () => {
         </div>
 
         <div className="flex flex-wrap items-center justify-center sm:justify-end gap-4 w-full sm:w-auto">
-            {/* Кнопка создания админа доступна ТОЛЬКО Главному Сис-Админу */}
             {adminRole === 'SystemAdmin' && (
               <button 
                   onClick={() => setShowAdminModal(true)} 
@@ -401,7 +501,6 @@ export const AdminPanel = () => {
         </div>
       </div>
 
-      {/* СПИСОК ПРЕДМЕТОВ КУРСА */}
       <div className="grid gap-6 md:gap-10">
         {subjects.map(subject => (
           <div key={subject.id} className={`bg-white rounded-[2rem] md:rounded-[3.5rem] transition-all duration-500 overflow-hidden border-4 ${expandedSubjectId === subject.id ? 'border-blue-200 shadow-2xl' : 'border-transparent shadow-md'}`}>
@@ -513,11 +612,10 @@ export const AdminPanel = () => {
         ))}
       </div>
 
-      {/* МОДАЛКА: СИСТЕМНЫЙ ДОСТУП ПРЕПОДАВАТЕЛЕЙ (БЕЗ ПАРОЛЯ, С ФУНКЦИЕЙ СБРОСА) */}
       <AnimatePresence>
         {showAdminModal && (
           <div className="fixed inset-0 z-[1000] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-2xl rounded-[3rem] p-8 md:p-12 shadow-2xl space-y-8 border-8 border-slate-100 relative">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-2xl rounded-[3rem] p-8 md:p-12 shadow-2xl space-y-8 border-8 border-slate-100 relative max-h-[90vh] overflow-y-auto custom-scrollbar">
               <button onClick={() => setShowAdminModal(false)} className="absolute top-6 right-6 p-4 bg-slate-100 hover:bg-red-100 text-slate-500 hover:text-red-600 rounded-full transition-all"><X size={28}/></button>
               
               <div className="text-center space-y-4 pb-6 border-b-2 border-slate-100">
@@ -525,19 +623,80 @@ export const AdminPanel = () => {
                     <ShieldCheck size={48} />
                  </div>
                  <h3 className="text-3xl md:text-4xl font-black text-purple-800 italic tracking-tight uppercase leading-none">СИСТЕМНЫЙ ДОСТУП</h3>
-                 <p className="text-sm md:text-base text-slate-500 font-bold uppercase">НАЗНАЧЕНИЕ ПОМОЩНИКА И ЭКСТРЕННЫЙ СБРОС КЛЮЧЕЙ</p>
+                 <p className="text-sm md:text-base text-slate-500 font-bold uppercase">УПРАВЛЕНИЕ КЛЮЧАМИ И ПАКЕТНЫЙ СБРОС</p>
+              </div>
+
+              <div className="p-6 bg-slate-50 rounded-3xl border-4 border-dashed border-slate-200 space-y-4">
+                <h4 className="text-sm font-black text-slate-600 tracking-wide leading-none uppercase italic">АРХИВ ПЕЧАТНЫХ ШАБЛОНОВ ПАРОЛЕЙ</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <button
+                    type="button"
+                    onClick={() => printStaticTemplate('teachers_passwords.html')}
+                    className="p-4 bg-white border-2 border-slate-200 hover:border-purple-500 hover:bg-purple-50/50 rounded-2xl flex items-center gap-3 transition-all text-left group"
+                  >
+                    <div className="p-2 bg-purple-50 text-purple-600 rounded-xl group-hover:bg-purple-100">
+                      <FileText size={20} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-black text-slate-800 leading-none">БЛАНК ПРЕПОДАВАТЕЛЕЙ</div>
+                      <div className="text-[9px] text-slate-400 font-bold mt-1">TEACHERS_PASSWORDS.HTML</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => printStaticTemplate('director_password.html')}
+                    className="p-4 bg-white border-2 border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 rounded-2xl flex items-center gap-3 transition-all text-left group"
+                  >
+                    <div className="p-2 bg-orange-50 text-orange-500 rounded-xl group-hover:bg-orange-100">
+                      <FileText size={20} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-black text-slate-800 leading-none">БЛАНК ДИРЕКТОРА</div>
+                      <div className="text-[9px] text-slate-400 font-bold mt-1">DIRECTOR_PASSWORD.HTML</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 bg-purple-50 rounded-2xl border-2 border-purple-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+                <div className="text-center sm:text-left">
+                  <h4 className="text-base font-black text-purple-900 leading-none">ГРУППОВАЯ ПЕЧАТЬ И СБРОС</h4>
+                  <p className="text-[10px] text-purple-600 font-bold uppercase mt-1">Выбрано сотрудников для сброса: {selectedTeacherIds.length}</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={isResettingBulk || selectedTeacherIds.length === 0}
+                  onClick={handleForceResetPasswordBulk}
+                  className={`px-6 py-4 rounded-xl font-black tracking-wide transition-all uppercase text-sm shadow-md active:scale-95 flex items-center gap-2 text-white ${selectedTeacherIds.length === 0 ? 'bg-slate-300 shadow-none cursor-not-allowed' : 'bg-purple-700 hover:bg-purple-800'}`}
+                >
+                  <Printer size={16} /> СБРОСИТЬ И ПЕЧАТАТЬ ({selectedTeacherIds.length})
+                </button>
+              </div>
+
+              <div className="p-6 bg-amber-50 rounded-2xl border-2 border-amber-200 shadow-sm flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <input 
+                    type="checkbox"
+                    className="w-6 h-6 rounded-lg border-2 border-amber-400 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                    checked={selectedTeacherIds.includes(0)}
+                    onChange={() => toggleTeacherSelection(0)}
+                  />
+                  <div>
+                    <h4 className="text-base font-black text-amber-900 leading-none">УЧЁТНАЯ ЗАПИСЬ ДИРЕКТОРА</h4>
+                    <p className="text-[10px] text-amber-600 font-bold uppercase mt-1">Восстановление административного доступа</p>
+                  </div>
+                </div>
               </div>
 
               <form onSubmit={handleCreateAdmin} className="space-y-6">
-
-                  {/* НАЗНАЧЕНИЕ ПРЕПОДАВАТЕЛЯ ИЗ КАСТОМНОГО DROPDOWN С УМНЫМ ПОИСКОМ */}
                   <div className="space-y-3 relative" ref={dropdownRef}>
-                      <label className="text-sm md:text-base text-slate-500 font-black ml-2 uppercase">ВЫБЕРИТЕ ПРЕПОДАВАТЕЛЯ / ДИРЕКТОРА</label>
+                      <label className="text-sm md:text-base text-slate-500 font-black ml-2 uppercase">СПИСОК СОТРУДНИКОВ ДЛЯ СБРОСА И НАЗНАЧЕНИЯ</label>
                       <div 
                         onClick={() => setIsTeacherDropdownOpen(!isTeacherDropdownOpen)}
                         className="w-full bg-slate-50 border-4 border-slate-200 rounded-2xl px-6 py-4 text-lg md:text-xl font-black text-purple-700 outline-none flex justify-between items-center cursor-pointer select-none"
                       >
-                        <span>{selectedTeacherObj ? selectedTeacherObj.name.toUpperCase() : 'ВЫБЕРИТЕ ИЗ СПИСКА...'}</span>
+                        <span>{selectedTeacherObj ? selectedTeacherObj.name.toUpperCase() : 'ВЫБЕРИТЕ ПРЕПОДАВАТЕЛЯ...'}</span>
                         <ChevronDown size={24} className={`transition-transform duration-300 ${isTeacherDropdownOpen ? 'rotate-180' : ''}`} />
                       </div>
 
@@ -548,7 +707,7 @@ export const AdminPanel = () => {
                               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                               <input 
                                 type="text"
-                                placeholder="ПОИСК ПО ФИО (А-Я)..."
+                                placeholder="ПОИСК ПО ФИО..."
                                 className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl py-3 pl-12 pr-4 text-sm font-black italic uppercase text-slate-700 outline-none focus:border-purple-400 transition-colors"
                                 value={teacherSearchQuery}
                                 onChange={e => setTeacherSearchQuery(e.target.value)}
@@ -559,39 +718,23 @@ export const AdminPanel = () => {
                               {filteredTeachers.length > 0 ? (
                                 filteredTeachers.map(t => {
                                   const tId = t.teacher_id ?? t.id ?? 0;
-                                  const isSelected = selectedTeacherId === tId;
+                                  const isChecked = selectedTeacherIds.includes(tId);
                                   
                                   return (
                                     <div
                                       key={tId}
-                                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-black italic border-2 border-transparent hover:bg-slate-50 transition-all`}
+                                      onClick={() => setSelectedTeacherId(tId)}
+                                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-black italic border-2 cursor-pointer transition-all ${selectedTeacherId === tId ? 'bg-purple-50 border-purple-200' : 'border-transparent hover:bg-slate-50'}`}
                                     >
-                                      <div 
-                                        className="flex-1 cursor-pointer py-1"
-                                        onClick={() => {
-                                          setSelectedTeacherId(tId);
-                                          setIsTeacherDropdownOpen(false);
-                                          setTeacherSearchQuery('');
-                                        }}
-                                      >
+                                      <div className="flex items-center gap-4 flex-1">
+                                        <input 
+                                          type="checkbox"
+                                          className="w-5 h-5 rounded border-2 border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                                          checked={isChecked}
+                                          onClick={(e) => e.stopPropagation()}
+                                          onChange={() => toggleTeacherSelection(tId)}
+                                        />
                                         <span>{t.name.toUpperCase()}</span>
-                                      </div>
-                                      
-                                      <div className="flex items-center gap-3">
-                                        
-                                        {/* КНОПКА ЭКСТРЕННОГО АДМИНИСТРАТИВНОГО СБРОСА */}
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleForceResetPassword(tId, t.name);
-                                          }}
-                                          className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-bold tracking-tighter transition-all uppercase text-[10px]"
-                                          title="Сбросить пароль сотруднику и распечатать чек-акт"
-                                        >
-                                          СБРОС КЛЮЧА
-                                        </button>
-                                        {isSelected && <Check size={16} className="text-purple-600" />}
                                       </div>
                                     </div>
                                   );
@@ -605,25 +748,6 @@ export const AdminPanel = () => {
                       </AnimatePresence>
                   </div>
 
-                  {/* КНОПКА ЭКСТРЕННОГО СБРОСА ДЛЯ ДИРЕКТОРА (ИСПРАВЛЕНО: ПЕРЕДАЕМ 0 ДЛЯ АВТОПОИСКА НА БЭКЕНДЕ) */}
-                  <div className="p-6 bg-amber-50 rounded-2xl border-2 border-amber-200 shadow-sm flex items-center justify-between gap-4 mb-4">
-                    <div>
-                      <h4 className="text-base font-black text-amber-900 leading-none">УЧЁТНАЯ ЗАПИСЬ ДИРЕКТОРА</h4>
-                      <p className="text-[10px] text-amber-600 font-bold uppercase mt-1">Экстренный сброс доступа руководства ТТЖТ</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleForceResetPassword(0, "ДИРЕКТОР ТТЖТ");
-                      }}
-                      className="px-5 py-3 bg-amber-600 text-white rounded-xl hover:bg-amber-700 font-black tracking-wide transition-all uppercase text-xs shadow-md active:scale-95 flex items-center gap-2"
-                    >
-                      <RefreshCw size={14} /> СБРОСИТЬ ПАРОЛЬ
-                    </button>
-                  </div>
-
-                  {/* ПОДТВЕРЖДЕНИЕ МАСТЕР-КЛЮЧОМ */}
                   <div className="space-y-3 pt-4 border-t-2 border-slate-100">
                       <label className="text-sm md:text-base text-slate-500 font-black ml-2 uppercase">МАСТЕР-КЛЮЧ ПОДТВЕРЖДЕНИЯ ГЛАВНОГО СИС-АДМИНА</label>
                       <input 

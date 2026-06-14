@@ -1,14 +1,14 @@
 import type { TeacherQuestion } from './types';
 
-// ПРЯМОЙ ВЫЗОВ БЭКЕНДА: Игнорируем капризы Nginx и шлем запросы сразу в порт 8000
-export const API_BASE_URL = "http://127.0.0.1:8000"; 
+export const API_BASE_URL = import.meta.env.PROD 
+  ? window.location.origin 
+  : "http://127.0.0.1:8000"; 
 
 const getHeaders = () => ({
   'Content-Type': 'application/json',
   'Authorization': `Bearer ${localStorage.getItem('token')}`
 });
 
-// Хелпер теперь гарантирует склейку базового URL с эндпоинтом, проверяя ведущий слэш
 const formatUrl = (url: string) => {
   const cleanUrl = url.startsWith('/') ? url : `/${url}`;
   return `${API_BASE_URL}${cleanUrl}`;
@@ -39,9 +39,6 @@ export const api = {
     });
   },
 
-  /**
-   * Получает список вопросов теста с правильными ответами для проверки преподавателем
-   */
   async getQuestionsForReview(testId: number): Promise<TeacherQuestion[]> {
     const res = await fetch(formatUrl(`/tests/${testId}/questions/review`), { 
       headers: getHeaders() 
