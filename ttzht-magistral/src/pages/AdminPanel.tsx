@@ -70,7 +70,6 @@ export const AdminPanel = () => {
       const res = await fetch(API_BASE_URL + '/auth/teachers', { headers: getHeaders() });
       if (res.ok) {
         const data = await res.json();
-        console.log("ДАННЫЕ ПРЕПОДАВАТЕЛЕЙ:", data); 
         const sortedTeachers = (data || []).sort((a: DBTeacher, b: DBTeacher) => a.name.localeCompare(b.name, 'ru'));
         setDbTeachers(sortedTeachers);
       }

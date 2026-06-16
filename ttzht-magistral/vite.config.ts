@@ -4,12 +4,11 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   
-  // ДОБАВЛЕНО: Указываем Vite собирать проект прямо в папку сервера
   build: {
-    // Вставь сюда точный абсолютный путь к папке public в Open Server
     outDir: 'C:/OSPanel/home/magistral.local/public',
-    // Очищать папку перед новой сборкой, чтобы не копился мусор
-    emptyOutDir: true 
+    emptyOutDir: true,
+    // Отключила генерацию маппинга исходного кода (.tsx файлы скроются из Network)
+    sourcemap: false
   },
 
   server: {

@@ -36,21 +36,13 @@ export const DirectorProfile = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [uiScale, setUiScale] = useState(1.0);
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
-  
-  // Фильтрация сводов
   const [selectedLesson, setSelectedLesson] = useState<string>('ВСЕ');
   const [selectedTopic, setSelectedTopic] = useState<string>('ВСЕ');
   const [selectedGroup, setSelectedGroup] = useState<string>('ВСЕ');
-  
-  // Конфигуратор
   const [showKz, setShowKz] = useState<boolean>(true);
   const [showSuccess, setShowSuccess] = useState<boolean>(true);
-
-  // Списки раскрытия и наведения
   const [expandedTeacher, setExpandedTeacher] = useState<number | null>(null);
   const [hoveredTeacherId, setHoveredTeacherId] = useState<number | null>(null);
-
-  // Настройки модального окна печати
   const [isPrintModalOpen, setIsSpecialPrintModalOpen] = useState<boolean>(false);
   const [printTarget, setPrintTarget] = useState<'all' | 'selected'>('all');
   const [selectedTeachersForPrint, setSelectedTeachersForPrint] = useState<number[]>([]);

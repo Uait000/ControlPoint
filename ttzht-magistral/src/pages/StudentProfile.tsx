@@ -81,7 +81,6 @@ export const StudentProfile = () => {
         const res = await fetch(API_BASE_URL +'/tests/available', { headers });
         const data = await res.json();
         
-        console.log("СТРУКТУРА ТЕСТОВ С БЭКЕНДА:", data);
         
         if (Array.isArray(data)) {
           setAssignedTests(data);
