@@ -59,108 +59,122 @@ export const TeacherProfile = () => {
 
   const [liveMonitor, setLiveMonitor] = useState<Record<number, any>>({});
 
-  useEffect(() => {
-    const initializeData = async () => {
-        let userObj: any = null;
-        let tokenLogin = '';
-        
-        try {
-            const token = localStorage.getItem('token');
-            if (token) {
-                const payload = JSON.parse(atob(token.split('.')[1]));
-                tokenLogin = payload.login || payload.name || payload.username || payload.email?.split('@')[0] || '';
-                userObj = { id: payload.id || payload.sub, login: tokenLogin };
-            }
-        } catch (e) {}
+useEffect(() => {
+    let userObj: any = null;
+    let tokenLogin = '';
+    
+    try {
+        const token = localStorage.getItem('token');
+        if (token) {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            tokenLogin = payload.login || payload.name || payload.username || payload.email?.split('@')[0] || '';
+            userObj = { id: payload.id || payload.sub, login: tokenLogin };
+        }
+    } catch (e) {}
 
-        try {
-            const rawUser = localStorage.getItem('user');
-            if (rawUser) {
-                const parsed = JSON.parse(rawUser);
-                if (parsed) {
-                    const parsedLogin = parsed.login || parsed.name || parsed.username || parsed.email?.split('@')[0];
-                    userObj = { ...parsed, id: parsed.id || userObj?.id, login: parsedLogin || tokenLogin };
-                }
+    try {
+        const rawUser = localStorage.getItem('user');
+        if (rawUser) {
+            const parsed = JSON.parse(rawUser);
+            if (parsed) {
+                const parsedLogin = parsed.login || parsed.name || parsed.username || parsed.email?.split('@')[0];
+                userObj = { ...parsed, id: parsed.id || userObj?.id, login: parsedLogin || tokenLogin };
             }
-        } catch (e) {}
+        }
+    } catch (e) {}
 
-        if (!userObj?.id || !userObj?.login) {
-            try {
-                const res = await fetch(API_BASE_URL +'/test/whoami', { headers });
+    setCurrentUser(userObj || { login: 'ПРЕПОДАВАТЕЛЬ' });
+
+    //Функция ОДНОКРАТНОЙ загрузки всех данных при входе в панель
+    const loadInitialData = async () => {
+        try {
+            // Если данных о пользователе нет, запрашиваем whoami
+            if (!userObj?.id || !userObj?.login) {
+                const res = await fetch(API_BASE_URL + '/test/whoami', { headers });
                 if (res.ok) {
                     const data = await res.json();
                     const targetData = data.user || data;
                     const apiLogin = targetData.login || targetData.name || targetData.username || targetData.email?.split('@')[0];
                     userObj = { ...targetData, id: targetData.id || userObj?.id, login: apiLogin || tokenLogin };
+                    setCurrentUser(userObj);
                     localStorage.setItem('user', JSON.stringify(userObj));
                 }
-            } catch (e) {}
-        }
-        
-        setCurrentUser(userObj || { login: 'ПРЕПОДАВАТЕЛЬ' });
+            }
 
-        fetch(API_BASE_URL +'/storage/courses', { headers }).then(r => r.json()).then(data => setCourses(Array.isArray(data) ? data : []));
-        fetch(API_BASE_URL +'/groups', { headers }).then(r => r.json()).then(data => setGroups(Array.isArray(data) ? data : []));
-        fetch(API_BASE_URL +'/tests/available', { headers }).then(r => r.json()).then(data => setAvailableTests(Array.isArray(data) ? data : []));
-        fetch(API_BASE_URL +'/auth/students', { headers }).then(r => r.json()).then(data => setStudents(Array.isArray(data) ? data : []));
+            // Запрашиваем справочники параллельно ОДИН раз
+            const [coursesRes, groupsRes, testsRes, studentsRes] = await Promise.all([
+                fetch(API_BASE_URL + '/storage/courses', { headers }),
+                fetch(API_BASE_URL + '/groups', { headers }),
+                fetch(API_BASE_URL + '/tests/available', { headers }),
+                fetch(API_BASE_URL + '/auth/students', { headers })
+            ]);
+
+            if (coursesRes.ok) setCourses(await coursesRes.json().then(data => Array.isArray(data) ? data : []));
+            if (groupsRes.ok) setGroups(await groupsRes.json().then(data => Array.isArray(data) ? data : []));
+            if (testsRes.ok) setAvailableTests(await testsRes.json().then(data => Array.isArray(data) ? data : []));
+            if (studentsRes.ok) setStudents(await studentsRes.json().then(data => Array.isArray(data) ? data : []));
+
+        } catch (error) {
+            console.error("Ошибка инициализации данных панели:", error);
+        }
     };
 
-    initializeData();
-    const interval = setInterval(initializeData, 1000);
+    loadInitialData();
 
- const connectWS = () => {
-      // Так как API_BASE_URL пустой, мы сразу нативно строим путь через window.location
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsBaseUrl = `${wsProtocol}//${window.location.host}`;
-          
-      // Формируем итоговую строку подключения с токеном авторизации
-      const wsUrl = `${wsBaseUrl}/test/ws/monitor?token=${localStorage.getItem('token')}`;
-      
-      ws.current = new WebSocket(wsUrl);
-      
-      ws.current.onmessage = (e) => {
-          const parts = e.data.split(':');
-          if (parts.length >= 3) {
-              const [type, sId, ...rest] = parts;
-              const studentId = Number(sId);
-              
-              setLiveMonitor(prev => {
-                  const currentStudent = prev[studentId] || { activeTopic: '' };
-                  const activeTopic = currentStudent.activeTopic;
-                  
-                  if (type === 'topic') {
-                      const newTopic = rest.join(':');
-                      return { 
-                          ...prev, 
-                          [studentId]: { 
-                              ...currentStudent, 
-                              activeTopic: newTopic,
-                              [newTopic]: { ...(currentStudent[newTopic] || {}), status: 'Online' }
-                          } 
-                      };
-                  }
-                  
-                  if (activeTopic) {
-                      const topicData = currentStudent[activeTopic] || {};
-                      if (type === 'finish') return { ...prev, [studentId]: { ...currentStudent, [activeTopic]: { ...topicData, status: 'Finished', score: rest[0], percent: rest[1] } } };
-                      if (type === 'progress') return { ...prev, [studentId]: { ...currentStudent, [activeTopic]: { ...topicData, progress: rest[0] } } };
-                      if (type === 'status') return { ...prev, [studentId]: { ...currentStudent, [activeTopic]: { ...topicData, status: rest[0] } } };
-                  } else {
-                      if (type === 'finish') return { ...prev, [studentId]: { ...currentStudent, status: 'Finished', score: rest[0], percent: rest[1] } };
-                      if (type === 'progress') return { ...prev, [studentId]: { ...currentStudent, progress: rest[0] } };
-                      if (type === 'status') return { ...prev, [studentId]: { ...currentStudent, status: rest[0] } };
-                  }
-                  
-                  return prev;
-              });
-          }
-      };
-      ws.current.onclose = () => setTimeout(connectWS, 3000);
+    //Веб-сокет для живого мониторинга 
+    const connectWS = () => {
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsBaseUrl = `${wsProtocol}//${window.location.host}`;
+        const wsUrl = `${wsBaseUrl}/test/ws/monitor?token=${localStorage.getItem('token')}`;
+        
+        ws.current = new WebSocket(wsUrl);
+        
+        ws.current.onmessage = (e) => {
+            const parts = e.data.split(':');
+            if (parts.length >= 3) {
+                const [type, sId, ...rest] = parts;
+                const studentId = Number(sId);
+                
+                setLiveMonitor(prev => {
+                    const currentStudent = prev[studentId] || { activeTopic: '' };
+                    const activeTopic = currentStudent.activeTopic;
+                    
+                    if (type === 'topic') {
+                        const newTopic = rest.join(':');
+                        return { 
+                            ...prev, 
+                            [studentId]: { 
+                                ...currentStudent, 
+                                activeTopic: newTopic,
+                                [newTopic]: { ...(currentStudent[newTopic] || {}), status: 'Online' }
+                            } 
+                        };
+                    }
+                    
+                    if (activeTopic) {
+                        const topicData = currentStudent[activeTopic] || {};
+                        if (type === 'finish') return { ...prev, [studentId]: { ...currentStudent, [activeTopic]: { ...topicData, status: 'Finished', score: rest[0], percent: rest[1] } } };
+                        if (type === 'progress') return { ...prev, [studentId]: { ...currentStudent, [activeTopic]: { ...topicData, progress: rest[0] } } };
+                        if (type === 'status') return { ...prev, [studentId]: { ...currentStudent, [activeTopic]: { ...topicData, status: rest[0] } } };
+                    } else {
+                        if (type === 'finish') return { ...prev, [studentId]: { ...currentStudent, status: 'Finished', score: rest[0], percent: rest[1] } };
+                        if (type === 'progress') return { ...prev, [studentId]: { ...currentStudent, progress: rest[0] } };
+                        if (type === 'status') return { ...prev, [studentId]: { ...currentStudent, status: rest[0] } };
+                    }
+                    
+                    return prev;
+                });
+            }
+        };
+
+        ws.current.onclose = () => {
+            setTimeout(connectWS, 3000);
+        };
     };
     
     connectWS();
+
     return () => {
-        clearInterval(interval);
         ws.current?.close();
     };
   }, [headers]);
