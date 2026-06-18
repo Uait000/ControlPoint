@@ -44,6 +44,7 @@ export const TeacherProfile = () => {
   const [selPoolId, setSelPoolId] = useState(''); 
   const [selGrp, setSelGrp] = useState('');
   const [questionCount, setQuestionCount] = useState(15);
+  const [testDuration, setTestDuration] = useState(20);
 
   const [isPrintModalOpen, setIsSpecialPrintModalOpen] = useState<boolean>(false);
   const [printTarget, setPrintTarget] = useState<'all' | 'selected'>('all');
@@ -59,7 +60,7 @@ export const TeacherProfile = () => {
 
   const [liveMonitor, setLiveMonitor] = useState<Record<number, any>>({});
 
-useEffect(() => {
+  useEffect(() => {
     let userObj: any = null;
     let tokenLogin = '';
     
@@ -85,10 +86,8 @@ useEffect(() => {
 
     setCurrentUser(userObj || { login: 'ПРЕПОДАВАТЕЛЬ' });
 
-    //Функция ОДНОКРАТНОЙ загрузки всех данных при входе в панель
     const loadInitialData = async () => {
         try {
-            // Если данных о пользователе нет, запрашиваем whoami
             if (!userObj?.id || !userObj?.login) {
                 const res = await fetch(API_BASE_URL + '/test/whoami', { headers });
                 if (res.ok) {
@@ -101,7 +100,6 @@ useEffect(() => {
                 }
             }
 
-            // Запрашиваем справочники параллельно ОДИН раз
             const [coursesRes, groupsRes, testsRes, studentsRes] = await Promise.all([
                 fetch(API_BASE_URL + '/storage/courses', { headers }),
                 fetch(API_BASE_URL + '/groups', { headers }),
@@ -115,13 +113,12 @@ useEffect(() => {
             if (studentsRes.ok) setStudents(await studentsRes.json().then(data => Array.isArray(data) ? data : []));
 
         } catch (error) {
-            console.error("Ошибка инициализации данных панели:", error);
+            console.error("Ошибка initialization данных панели:", error);
         }
     };
 
     loadInitialData();
 
-    //Веб-сокет для живого мониторинга 
     const connectWS = () => {
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsBaseUrl = `${wsProtocol}//${window.location.host}`;
@@ -178,10 +175,6 @@ useEffect(() => {
         ws.current?.close();
     };
   }, [headers]);
-
-  useEffect(() => {
-    setFilterTopic('');
-  }, [filterSubject]);
 
   const visibleGroups = useMemo(() => {
     const currentTeacherId = String(currentUser?.id || '');
@@ -410,7 +403,7 @@ useEffect(() => {
     }
   };
 
- const handleOptionChange = async (qId: number, newCorrectIdx: number) => {
+  const handleOptionChange = async (qId: number, newCorrectIdx: number) => {
     const question = reviewQuestions.find(q => q.id === qId);
     if (!question) return;
 
@@ -426,7 +419,7 @@ useEffect(() => {
         question: question.question,
         variants: validVariants, 
         correct: validCorrectIdx,
-        complexity: question.complexity
+        complexity: (question.complexity && question.complexity >= 1) ? question.complexity : 1
     };
 
     try {
@@ -467,7 +460,8 @@ useEffect(() => {
       body: JSON.stringify({ 
         test_id: Number(selPoolId), 
         group_id: parseInt(selGrp), 
-        question_count: Number(questionCount) 
+        question_count: Number(questionCount),
+        duration: Number(testDuration)
       })
     });
 
@@ -482,30 +476,51 @@ useEffect(() => {
   const handleReset = async (sId: number, topicName: string) => {
     if (!confirm("СБРОСИТЬ РЕЗУЛЬТАТ И РАЗРЕШИТЬ ПЕРЕСДАЧУ?")) return;
     
-    const test = availableTests.find(t => 
-        t.docxName === topicName && 
-        String(t.teacherId) === String(currentUser?.id)
-    );
-    const finalTest = test || availableTests.find(t => t.docxName === topicName);
+    let testObj = availableTests.find(t => t.docxName === topicName);
+    
+    if (!testObj) {
+        testObj = availableTests.find(t => t.docxName?.toLowerCase() === topicName.toLowerCase());
+    }
 
-    if (!finalTest) {
-      alert("Ошибка: Тест не найден");
+    const studentMonitor = liveMonitor[sId];
+    const targetTestId = testObj?.id || 
+                         (studentMonitor && studentMonitor.testId) || 
+                         (studentMonitor && studentMonitor.test_id);
+
+    if (!targetTestId) {
+      alert("Ошибка: Не удалось определить ID теста для сброса. Попробуйте обновить страницу.");
       return;
     }
 
-    const res = await fetch(API_BASE_URL +`/test/reset/${sId}/${finalTest.id}`, { method: 'POST', headers });
-    if (res.ok) {
-      setLiveMonitor(prev => {
-        const next = { ...prev };
-        if (next[sId]) {
-            const studentData = { ...next[sId] };
-            delete studentData[topicName];
-            next[sId] = studentData;
+    try {
+        const res = await fetch(API_BASE_URL + `/test/reset/${sId}/${targetTestId}`, { 
+            method: 'POST', 
+            headers 
+        });
+        
+        if (res.ok) {
+          alert("ДОСТУП УСПЕШНО ВОССТАНОВЛЕН");
+          setLiveMonitor(prev => {
+            const next = { ...prev };
+            if (next[sId]) {
+                const studentData = { ...next[sId] };
+                delete studentData[topicName];
+                next[sId] = studentData;
+            }
+            return next;
+          });
+          
+          const updatedRes = await fetch(API_BASE_URL + '/tests/available', { headers });
+          if (updatedRes.ok) {
+              const data = await updatedRes.json();
+              setAvailableTests(Array.isArray(data) ? data : []);
+          }
+        } else {
+          alert("Ошибка при сбросе результата на сервере");
         }
-        return next;
-      });
-    } else {
-      alert("Ошибка при сбросе результата");
+    } catch (err) {
+        console.error("Сбой сети при сбросе:", err);
+        alert("Не удалось связаться с сервером");
     }
   };
 
@@ -650,7 +665,7 @@ useEffect(() => {
       style={{ zoom: uiScale }}
     >
       
-{/* HEADER */}
+      {/* HEADER */}
       <div className="bg-white p-6 sm:p-10 rounded-[3rem] shadow-xl border border-[#e1eefb] flex flex-col lg:flex-row items-center gap-8">
         <div className="relative">
           <div className="w-32 h-32 bg-slate-900 rounded-[2.5rem] border-8 border-blue-50 overflow-hidden shadow-2xl">
@@ -672,7 +687,6 @@ useEffect(() => {
             <button onClick={() => setShowInspector(true)} className="bg-orange-500 text-white px-8 py-5 rounded-2xl shadow-xl flex items-center gap-3 hover:bg-orange-600 active:scale-95 transition-all border-b-4 border-orange-800"><Search size={24}/> ИНСПЕКТОР БАЗЫ</button>
             <button onClick={() => setIsSpecialPrintModalOpen(true)} className="bg-emerald-600 text-white px-8 py-5 rounded-2xl shadow-xl flex items-center gap-3 hover:bg-emerald-700 active:scale-95 transition-all border-b-4 border-emerald-800"><Printer size={24}/> ПЕЧАТЬ ОТЧЁТА</button>
             
-            {/* ТУМБЛЕР ПЕРЕКЛЮЧЕНИЯ РОЛИ - ВСТРОЕН В ОБЩИЙ БЛОК КНОПОК */}
             {currentUser?.accountType === 'AssistantAdmin' && (
               <button 
                 onClick={() => {
@@ -688,7 +702,7 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* ПАНЕЛЬ ФИЛЬТРОВ И ВКЛАДОК + ИНСТРУМЕНТ МАСШТАБА */}
+      {/* ПАНЕЛЬ ФИЛЬТРОВ И ВКЛАДОК */}
       <div className="flex flex-col xl:flex-row justify-between items-center gap-4 bg-white p-3 rounded-[2.5rem] shadow-md border-2 border-slate-100">
           <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
              <button onClick={() => setActiveTab('monitoring')} className={`flex-1 xl:flex-none px-6 py-4 rounded-2xl flex justify-center items-center gap-3 transition-all text-sm font-black tracking-widest ${activeTab === 'monitoring' ? 'bg-blue-50 text-blue-700 shadow-inner border-2 border-blue-200' : 'text-slate-400 hover:text-slate-600 border-2 border-transparent hover:bg-slate-50'}`}>
@@ -881,7 +895,7 @@ useEffect(() => {
       </div>
       )}
 
-      {/* АНАЛИТИКА + ДЕТАЛИЗАЦИЯ ПО ГРУППАМ */}
+      {/* АНАЛИТИКА */}
       {activeTab === 'analytics' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
@@ -967,8 +981,8 @@ useEffect(() => {
         </div>
       )}
 
-      {/* МОДАЛКА: ИНСПЕКТОР */}
-<AnimatePresence>
+      {/* ИНСПЕКТОР */}
+      <AnimatePresence>
         {showInspector && (
           <div className="fixed inset-0 z-[1100] bg-slate-900/90 backdrop-blur-2xl flex items-center justify-center p-4">
             <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }} className="bg-white w-full max-w-6xl h-[90vh] rounded-[4rem] shadow-2xl flex flex-col overflow-hidden border-8 border-white/50">
@@ -1025,18 +1039,28 @@ useEffect(() => {
                             <h4 className="text-2xl font-black text-slate-800 leading-tight italic tracking-tight underline decoration-orange-100 decoration-8 underline-offset-4">"{q.question}"</h4>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                                {q.options.map((opt, optIdx) => (
-                                    <button 
-                                        key={optIdx} 
-                                        onClick={() => handleOptionChange(q.id, optIdx)}
-                                        className={`p-6 rounded-[2rem] border-4 text-left transition-all flex items-center gap-5 ${q.correct === optIdx ? 'bg-green-50 border-green-500 text-green-700 shadow-xl' : 'bg-slate-50 border-transparent text-slate-400'}`}
-                                    >
-                                        <div className={`w-8 h-8 rounded-full border-4 flex-shrink-0 flex items-center justify-center ${q.correct === optIdx ? 'border-green-500 bg-white' : 'border-slate-200 bg-white'}`}>
-                                            {q.correct === optIdx && <div className="w-3 h-3 bg-green-500 rounded-full" />}
-                                        </div>
-                                        <span className="font-black italic text-base tracking-tight">{opt}</span>
-                                    </button>
-                                ))}
+                                {q.options.map((opt, optIdx) => {
+                                    const isThisOptionCorrect = Number(q.correct) === optIdx;
+
+                                    return (
+                                        <button 
+                                            key={optIdx} 
+                                            onClick={() => handleOptionChange(q.id, optIdx)}
+                                            className={`p-6 rounded-[2rem] border-4 text-left transition-all flex items-center gap-5 ${
+                                                isThisOptionCorrect 
+                                                    ? 'bg-green-50 border-green-500 text-green-700 shadow-xl' 
+                                                    : 'bg-slate-50 border-transparent text-slate-400'
+                                            }`}
+                                        >
+                                            <div className={`w-8 h-8 rounded-full border-4 flex-shrink-0 flex items-center justify-center ${
+                                                isThisOptionCorrect ? 'border-green-500 bg-white' : 'border-slate-200 bg-white'
+                                            }`}>
+                                                {isThisOptionCorrect && <div className="w-3 h-3 bg-green-500 rounded-full" />}
+                                            </div>
+                                            <span className="font-black italic text-base tracking-tight">{opt}</span>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
                     ))}
@@ -1047,7 +1071,7 @@ useEffect(() => {
         )}
       </AnimatePresence>
 
-      {/* МОДАЛКА: НАЗНАЧИТЬ ТЕСТ */}
+      {/* НАЗНАЧИТЬ ТЕСТ */}
       <AnimatePresence>
         {showCreateModal && (
           <div className="fixed inset-0 z-[1000] bg-slate-900/80 backdrop-blur-xl flex items-center justify-center p-4">
@@ -1059,7 +1083,7 @@ useEffect(() => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                 <select className="w-full bg-slate-50 p-7 rounded-[2.5rem] font-black text-lg shadow-inner outline-none focus:border-blue-400 border-4 border-transparent transition-all" value={selSub} onChange={e => {setSelSub(e.target.value); setSelPoolId('');}}>
-                    <option value="">ДИСЦИПЛИНА...</option>
+                    <option value="">ВЫБЕРИТЕ ДИСЦИПЛИНУ...</option>
                     {courses.slice().sort((a, b) => a.title.localeCompare(b.title)).map(c => <option key={c.id} value={String(c.id)}>{c.title}</option>)}
                 </select>
                 <select className="w-full bg-slate-50 p-7 rounded-[2.5rem] font-black text-lg shadow-inner outline-none focus:border-blue-400 border-4 border-transparent transition-all" value={selGrp} onChange={e => setSelGrp(e.target.value)}>
@@ -1104,6 +1128,28 @@ useEffect(() => {
                     </div>
                 </div>
 
+                <div className="col-span-full bg-slate-50 p-8 rounded-[3rem] shadow-inner border-2 border-slate-100">
+                    <div className="flex justify-between items-center mb-6">
+                        <span className="text-sm font-black text-slate-500 tracking-widest uppercase">ВРЕМЯ НА ПРОХОЖДЕНИЕ (МИНУТ):</span>
+                        <div className="bg-orange-500 text-white px-6 py-2 rounded-2xl text-2xl shadow-lg border-2 border-orange-400">
+                            {testDuration} МИН.
+                        </div>
+                    </div>
+                    <input 
+                        type="range" 
+                        min="5" 
+                        max="120" 
+                        step="5"
+                        value={testDuration} 
+                        onChange={(e) => setTestDuration(Number(e.target.value))}
+                        className="w-full h-4 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-orange-500"
+                    />
+                    <div className="flex justify-between text-[10px] text-slate-400 font-black mt-3 px-1">
+                        <span>5 МИНУТ</span>
+                        <span>120 МИНУТ (МАКСИМУМ)</span>
+                    </div>
+                </div>
+
               </div>
 
               <button disabled={!selPoolId || !selGrp} onClick={handleAssignTest} className={`w-full py-9 rounded-[3rem] font-black text-2xl transition-all shadow-2xl ${selPoolId && selGrp ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-100 text-slate-300'}`}>ОПУБЛИКОВАТЬ ЗАДАНИЕ</button>
@@ -1112,7 +1158,7 @@ useEffect(() => {
         )}
       </AnimatePresence>
 
-      {/* МОДАЛКА: НАСТРОЙКА ПЕЧАТИ ВЕДОМОСТЕЙ ПРЕПОДАВАТЕЛЯ */}
+      {/* ПЕЧАТЬ ВЕДОМОСТЕЙ */}
       <AnimatePresence>
         {isPrintModalOpen && (
           <div className="fixed inset-0 z-[1100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">

@@ -23,7 +23,9 @@ export const TestPage = () => {
   const [testFinished, setTestFinished] = useState(() => JSON.parse(sessionStorage.getItem(`finished_${id}`) || 'false'));
   const [currentStep, setCurrentStep] = useState(() => Number(sessionStorage.getItem(`step_${id}`) || 0));
   const [score, setScore] = useState(() => Number(sessionStorage.getItem(`score_${id}`) || 0));
-  const [timeLeft, setTimeLeft] = useState(() => Number(sessionStorage.getItem(`time_${id}`) || 1200));
+  
+  // Изменили дефолтный хардкод 1200 на 0
+  const [timeLeft, setTimeLeft] = useState(() => Number(sessionStorage.getItem(`time_${id}`) || 0));
 
   const [questions, setQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -52,7 +54,7 @@ export const TestPage = () => {
     const token = localStorage.getItem('token');
 
     try {
-      const res = await fetch(API_BASE_URL +`/test/start/${id}`, {
+      const res = await fetch(API_BASE_URL + `/test/start/${id}`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -78,7 +80,18 @@ export const TestPage = () => {
       const decodedData = JSON.parse(decodedText);
       
       setTimeout(() => {
-        setQuestions(decodedData); 
+        // Если структура ответа подразумевает { questions: [...], time_limit: 300 }
+        const testQuestions = Array.isArray(decodedData) ? decodedData : (decodedData.questions || []);
+        setQuestions(testQuestions); 
+
+        // Выставляем время с бэка, если его еще нет в sessionStorage (первый старт)
+        const savedTime = sessionStorage.getItem(`time_${id}`);
+        if (!savedTime) {
+          // Ищем лимит времени в ответе бэка (например, в секундах). Если нет — ставим фолбек 300 (5 минут)
+          const backendSeconds = decodedData.time_limit || 300;
+          setTimeLeft(backendSeconds);
+        }
+        
         setTestStarted(true);
         setLoading(false);
         
@@ -104,7 +117,7 @@ export const TestPage = () => {
     if (isBlocked || testFinished || !testStarted) return;
     setIsBlocked(true);
     try {
-      await fetch(API_BASE_URL +`/test/violate/${id}`, { method: 'POST', headers });
+      await fetch(API_BASE_URL + `/test/violate/${id}`, { method: 'POST', headers });
       if (socketRef.current?.readyState === 1) socketRef.current.send("focus_lost");
     } catch (e) {}
   };
@@ -116,21 +129,26 @@ export const TestPage = () => {
     return () => window.removeEventListener('blur', onBlur);
   }, [testStarted, testFinished, isBlocked]);
 
+  // Обновленный эффект таймера с зависимостью от timeLeft
   useEffect(() => {
-    if (!testStarted || testFinished || isBlocked || questions.length === 0) return;
+    if (!testStarted || testFinished || isBlocked || questions.length === 0 || timeLeft <= 0) return;
+    
     const timer = setInterval(() => {
       setTimeLeft(p => {
-        if (p <= 1) { handleFinish(score); return 0; }
+        if (p <= 1) { 
+          handleFinish(score); 
+          return 0; 
+        }
         return p - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [testStarted, testFinished, isBlocked, score, questions]);
+  }, [testStarted, testFinished, isBlocked, score, questions, timeLeft]);
 
   const handleFinish = async (finalScore: number) => {
     const percent = Math.round((finalScore / (questions.length || 1)) * 100);
     try {
-      await fetch(API_BASE_URL +`/test/finish/${id}/${finalScore}/${percent}`, { method: 'POST', headers });
+      await fetch(API_BASE_URL + `/test/finish/${id}/${finalScore}/${percent}`, { method: 'POST', headers });
       sessionStorage.setItem(`finished_${id}`, 'true');
       setTestFinished(true);
     } catch (e) {
@@ -142,7 +160,7 @@ export const TestPage = () => {
     let currentScore = score;
     if (selectedIdx !== null) {
       try {
-        const res = await fetch(API_BASE_URL +`/test/submit`, {
+        const res = await fetch(API_BASE_URL + `/test/submit`, {
           method: 'POST',
           headers,
           body: JSON.stringify({ question_id: questions[currentStep].id, selected_option: selectedIdx })
@@ -164,7 +182,6 @@ export const TestPage = () => {
   };
 
   const clearAndNavigate = () => {
-    // Очищаем сессию перед уходом
     sessionStorage.removeItem(`started_${id}`);
     sessionStorage.removeItem(`step_${id}`);
     sessionStorage.removeItem(`score_${id}`);
